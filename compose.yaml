@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: turtle
+      POSTGRES_PASSWORD: turtle_dev
+      POSTGRES_DB: turtle
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations/001_auth.sql:/docker-entrypoint-initdb.d/001_auth.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U turtle -d turtle"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

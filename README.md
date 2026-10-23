@@ -1,27 +1,38 @@
 # 多人海龟汤
 
-计划用 Go 构建在线海龟汤项目：玩家通过房间码或大厅加入游戏，由主持人根据汤底回答问题。
-
-## 计划玩法
-
-- **共探**：玩家自由提问，主持人回答「是」「否」「无关」；答对或查看汤底后转为旁观者，其他人可以继续猜。
-- **竞答**：玩家轮流限时提问，第一位还原真相的人获胜。
-- 看过汤底的人不能在同一局中作为玩家参与。
+用 Go 和 Vue 构建的多人海龟汤。玩家可通过房间码加入，由主持人回答「是」「否」「无关」。看过汤底的玩家不能在同一局继续猜题。
 
 ## 文件树
 
 ```text
-cmd/server/main.go       Go 服务入口与 HTTP 路由
-cmd/server/main_test.go  HTTP 路由测试
-go.mod                   Go 模块与依赖
+cmd/server/         Go 服务入口
+internal/account/   注册、登录与会话
+migrations/         PostgreSQL 建表 SQL
+web/                Vue 网页
+compose.yaml        本地数据库
 ```
 
 ## 快速运行
 
-安装 Go 后，在项目根目录执行：
+需要 Go、Node.js 和 Docker Desktop。在项目根目录启动本地数据库：
 
 ```sh
+docker compose up -d
+```
+
+启动后端（PowerShell）：
+
+```powershell
+$env:DATABASE_URL = "postgres://turtle:turtle_dev@127.0.0.1:5433/turtle?sslmode=disable"
 go run ./cmd/server
 ```
 
-访问 `http://localhost:18080/health`，预期返回 `{"status":"ok"}`。运行测试：`go test ./...`。
+另开终端启动网页：
+
+```sh
+cd web
+npm install
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173`。运行后端测试：`go test ./...`。
