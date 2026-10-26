@@ -1,3 +1,4 @@
+// Package account 管理注册、登录与基于 Cookie 的会话。
 package account
 
 import (
@@ -32,6 +33,15 @@ func (h *Handler) Register(router *gin.Engine) {
 	router.POST("/api/login", h.login)
 	router.GET("/api/me", h.me)
 	router.POST("/api/logout", h.logout)
+}
+
+// CurrentUser 读取请求中的会话，供其他业务模块判断登录状态。
+func (h *Handler) CurrentUser(ctx *gin.Context) (User, error) {
+	hash, err := tokenHash(ctx.Request)
+	if err != nil {
+		return User{}, ErrNotFound
+	}
+	return h.store.FindSessionUser(ctx.Request.Context(), hash)
 }
 
 func (h *Handler) register(ctx *gin.Context) {

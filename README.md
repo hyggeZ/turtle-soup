@@ -1,14 +1,15 @@
 # 多人海龟汤
 
-用 Go 和 Vue 构建的多人海龟汤。玩家可通过房间码加入，由主持人回答「是」「否」「无关」。看过汤底的玩家不能在同一局继续猜题。
+用 Go、Vue 和 PostgreSQL 构建的海龟汤社区。注册后可发布汤面和汤底，选择本格/变格、难度与恐怖程度；其他用户可关注作者、点赞、收藏、评论。阅读汤题时可主动查看汤底。
 
 ## 文件树
 
 ```text
 cmd/server/         Go 服务入口
 internal/account/   注册、登录与会话
+internal/forum/     汤题、互动与用户资料
 migrations/         PostgreSQL 建表 SQL
-web/                Vue 网页
+web/src/components/ Vue 页面组件
 compose.yaml        本地数据库
 ```
 
@@ -23,7 +24,7 @@ docker compose up -d
 启动后端（PowerShell）：
 
 ```powershell
-$env:DATABASE_URL = "postgres://turtle:turtle_dev@127.0.0.1:5433/turtle?sslmode=disable"
+$env:DATABASE_URL = "postgres://turtle:turtle_dev@127.0.0.1:5434/turtle?sslmode=disable"
 go run ./cmd/server
 ```
 
@@ -36,3 +37,5 @@ npm run dev
 ```
 
 打开 `http://127.0.0.1:5173`。运行后端测试：`go test ./...`。
+
+已有本地数据库时，启动后端会自动补建论坛表；首次启动数据库会创建账号表。

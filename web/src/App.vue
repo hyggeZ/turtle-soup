@@ -1,105 +1,39 @@
 <script setup>
+// 主页面只负责页面切换和当前登录用户，不保存论坛业务数据。
 import { onMounted, ref } from 'vue'
+import { request, send } from './api'
+import AuthPanel from './components/AuthPanel.vue'
+import SoupEditor from './components/SoupEditor.vue'
+import SoupList from './components/SoupList.vue'
+import SoupDetail from './components/SoupDetail.vue'
+import ProfilePanel from './components/ProfilePanel.vue'
 
-const mode = ref('login')
-const username = ref('')
-const password = ref('')
 const user = ref(null)
-const message = ref('')
-const busy = ref(false)
-
-async function request(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: 'same-origin',
-    ...options,
-  })
-  if (response.status === 204) return null
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.error || '请求失败')
-  return data
-}
-
-async function loadMe() {
-  try {
-    user.value = await request('/api/me')
-  } catch {
-    user.value = null
-  }
-}
-
-async function submit() {
-  busy.value = true
-  message.value = ''
-  try {
-    const path = mode.value === 'register' ? '/api/register' : '/api/login'
-    const data = await request(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username.value, password: password.value }),
-    })
-    password.value = ''
-    if (mode.value === 'register') {
-      mode.value = 'login'
-      message.value = `账号 ${data.username} 注册成功，请登录`
-    } else {
-      user.value = data
-    }
-  } catch (error) {
-    message.value = error.message
-  } finally {
-    busy.value = false
-  }
-}
-
-async function logout() {
-  busy.value = true
-  message.value = ''
-  try {
-    await request('/api/logout', { method: 'POST' })
-    user.value = null
-    message.value = '已退出登录'
-  } catch (error) {
-    message.value = error.message
-  } finally {
-    busy.value = false
-  }
-}
-
-onMounted(loadMe)
+const page = ref('home')
+const selected = ref(0)
+const refresh = ref(0)
+async function loadUser() { try { user.value = await request('/api/me') } catch { user.value = null } }
+async function logout() { await send('/api/logout', 'POST'); user.value = null; page.value = 'home'; refresh.value++ }
+function openSoup(id) { selected.value = id; page.value = 'soup' }
+function openProfile(id) { selected.value = id; page.value = 'profile' }
+function created(id) { refresh.value++; openSoup(id) }
+onMounted(loadUser)
 </script>
-
 <template>
-  <main class="card">
-    <h1>海龟汤</h1>
-    <p class="intro">多人推理游戏</p>
-
-    <section v-if="user">
-      <h2>欢迎，{{ user.username }}</h2>
-      <p>你的用户 ID：{{ user.id }}</p>
-      <button :disabled="busy" @click="logout">退出登录</button>
-    </section>
-
-    <section v-else>
-      <h2>{{ mode === 'login' ? '登录' : '注册' }}</h2>
-      <form @submit.prevent="submit">
-        <label for="username">用户名</label>
-        <input id="username" v-model="username" autocomplete="username" required />
-        <label for="password">密码</label>
-        <input
-          id="password"
-          v-model="password"
-          type="password"
-          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-          required
-        />
-        <button :disabled="busy">{{ mode === 'login' ? '登录' : '创建账号' }}</button>
-      </form>
-      <button class="link" @click="mode = mode === 'login' ? 'register' : 'login'; message = ''">
-        {{ mode === 'login' ? '还没有账号？去注册' : '已有账号？去登录' }}
-      </button>
-      <p v-if="mode === 'register'" class="hint">用户名：3–20 位字母、数字或下划线；密码至少 8 位。</p>
-    </section>
-
-    <p v-if="message" class="message" role="status">{{ message }}</p>
-  </main>
+  <div class="layout">
+    <header><button class="brand" @click="page = 'home'">海龟汤</button><nav>
+      <button class="text-button" @click="page = 'home'">汤题广场</button>
+      <button v-if="user" class="text-button" @click="openProfile(user.id)">@{{ user.username }}</button>
+      <button v-if="user" class="text-button" @click="logout">退出</button>
+      <button v-else class="text-button" @click="page = 'auth'">登录 / 注册</button>
+    </nav></header>
+    <main>
+      <div v-if="page === 'home'" class="section-head"><div><h1>汤题广场</h1><p class="muted">读汤面，猜出背后的故事。</p></div><button v-if="user" @click="page = 'editor'">发布汤题</button></div>
+      <SoupList v-if="page === 'home'" :refresh="refresh" @open="openSoup" @profile="openProfile" />
+      <AuthPanel v-else-if="page === 'auth'" @logged-in="user = $event; page = 'home'; refresh++" />
+      <SoupEditor v-else-if="page === 'editor'" @created="created" @cancel="page = 'home'" />
+      <SoupDetail v-else-if="page === 'soup'" :id="selected" :user="user" @back="page = 'home'" @profile="openProfile" />
+      <ProfilePanel v-else-if="page === 'profile'" :id="selected" :user="user" @back="page = 'home'" @open="openSoup" />
+    </main>
+  </div>
 </template>

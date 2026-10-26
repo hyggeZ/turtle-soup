@@ -1,3 +1,4 @@
+// 服务入口连接数据库，并注册账号和论坛两个模块的接口。
 package main
 
 import (
@@ -11,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"turtle-soup/internal/account"
+	"turtle-soup/internal/forum"
+	"turtle-soup/migrations"
 )
 
 func main() {
@@ -29,10 +32,14 @@ func main() {
 	if err := db.Ping(ctx); err != nil {
 		log.Fatal("连接 PostgreSQL 失败: ", err)
 	}
+	if err := migrations.Apply(context.Background(), db); err != nil {
+		log.Fatal("初始化论坛数据表失败: ", err)
+	}
 
 	router := newRouter()
 	auth := account.NewHandler(account.NewPGStore(db), os.Getenv("COOKIE_SECURE") == "true")
 	auth.Register(router)
+	forum.NewHandler(forum.NewStore(db), auth).Register(router)
 	if err := router.Run(":18080"); err != nil {
 		log.Fatal(err)
 	}
