@@ -24,13 +24,11 @@ button:disabled { opacity: .45; cursor: default; }
 .text-button:hover, .account-button:hover { color: #111; text-decoration: underline; }
 
 .page-wrap { max-width: 1240px; margin: 0 auto; padding: 54px 28px 80px; }
-.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 64px; }
-.page-heading { padding: 0 0 36px; }
-.eyebrow { margin: 0 0 14px; color: #999; font-size: 11px; font-weight: 700; letter-spacing: .15em; }
+.home-content { max-width: 850px; margin: 0 auto; }
+.home-content > h1 { margin-bottom: 32px; }
 h1 { margin: 0; font-size: 38px; line-height: 1.25; letter-spacing: -.04em; }
 h2 { margin: 0; font-size: 23px; line-height: 1.4; }
 h3 { margin-top: 32px; font-size: 18px; }
-.page-heading .muted { margin: 12px 0 0; font-size: 15px; }
 .muted, .meta { color: #777; }
 
 .feed-heading { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid #d9d9d9; padding-bottom: 15px; }
@@ -52,13 +50,6 @@ h3 { margin-top: 32px; font-size: 18px; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 16px; padding-top: 28px; color: #777; font-size: 13px; }
 .pager button { background: white; color: #333; border-color: #d8d8d8; }
 
-.sidebar { border-left: 1px solid #e6e6e6; padding-left: 28px; }
-.side-section { padding: 1px 0 25px; margin-bottom: 30px; border-bottom: 1px solid #e6e6e6; }
-.side-section h2 { font-size: 17px; }
-.side-section p, .side-section li { color: #666; font-size: 14px; line-height: 1.8; }
-.side-section ol { padding-left: 20px; }
-.side-section li { padding: 3px 0; }
-.side-section strong { color: #333; }
 
 /* 发布、登录、详情沿用同一套克制的表单和分隔线。 */
 .panel { max-width: 850px; margin: 0 auto 28px; padding: 0; background: #fff; }
@@ -84,8 +75,6 @@ form > button { justify-self: start; }
 
 @media (max-width: 800px) {
   .header-inner { gap: 24px; padding: 0 18px; }
-  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
-  .sidebar { border-left: 0; border-top: 1px solid #e6e6e6; padding: 25px 0 0; }
 }
 @media (max-width: 560px) {
   .header-inner { min-height: 62px; gap: 14px; flex-wrap: wrap; padding: 12px 16px; }

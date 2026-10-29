@@ -50,33 +50,10 @@ onMounted(loadUser)
     </header>
 
     <main class="page-wrap">
-      <div v-if="page === 'home'" class="home-grid">
-        <div class="feed-column">
-          <div class="page-heading">
-            <p class="eyebrow">EXPLORE STORIES</p>
-            <h1>汤题广场</h1>
-            <p class="muted">用有限的信息，推理出完整的真相。</p>
-          </div>
-          <SoupList :refresh="refresh" @open="openSoup" @profile="openProfile" />
-        </div>
-        <aside class="sidebar" aria-label="玩法说明">
-          <section class="side-section">
-            <h2>如何玩海龟汤</h2>
-            <p>阅读汤面，根据线索推理背后的故事。</p>
-            <ol>
-              <li>先读题目，找出不寻常的地方。</li>
-              <li>尝试提出能用「是」「否」「无关」回答的问题。</li>
-              <li>逐步还原真相，再查看汤底。</li>
-            </ol>
-          </section>
-          <section class="side-section">
-            <h2>题目说明</h2>
-            <p><strong>本格</strong>：线索遵循现实逻辑。</p>
-            <p><strong>变格</strong>：可能包含超自然设定。</p>
-            <p>难度分为 1–5 级，恐怖程度分为 0–5 级，均由作者标注。</p>
-          </section>
-        </aside>
-      </div>
+      <section v-if="page === 'home'" class="home-content">
+        <h1>汤题广场</h1>
+        <SoupList :refresh="refresh" @open="openSoup" @profile="openProfile" />
+      </section>
 
       <AuthPanel v-else-if="page === 'auth'" @logged-in="user = $event; page = 'home'; refresh++" />
       <SoupEditor v-else-if="page === 'editor'" @created="created" @cancel="page = 'home'" />
