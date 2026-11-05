@@ -108,6 +108,16 @@ func (s *Store) Answer(ctx context.Context, id int64) (string, error) {
 	return answer, err
 }
 
+// Playing 禁止正在参与该题对局的玩家从社区接口直接读取汤底。
+func (s *Store) Playing(ctx context.Context, user, soup int64) (bool, error) {
+	var playing bool
+	err := s.db.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM rooms r JOIN room_members m ON m.room_id=r.id
+		WHERE r.soup_id=$1 AND r.status='active' AND m.user_id=$2 AND m.role='player'
+	)`, soup, user).Scan(&playing)
+	return playing, err
+}
+
 func (s *Store) SetRelation(ctx context.Context, table string, user, target int64, add bool) error {
 	// table 只能由处理器中的固定枚举传入，不能来自请求参数。
 	if table != "soup_likes" && table != "soup_bookmarks" {

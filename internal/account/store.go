@@ -17,6 +17,8 @@ type User struct {
 	ID           int64  `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"`
+	IsAdmin      bool   `json:"isAdmin"`
+	Disabled     bool   `json:"disabled"`
 }
 
 // Store 只列出登录流程需要的数据库操作，当前只有 PostgreSQL 实现。
@@ -52,8 +54,8 @@ func (s *PGStore) CreateUser(ctx context.Context, name, hash string) (User, erro
 func (s *PGStore) FindUser(ctx context.Context, name string) (User, error) {
 	var user User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, username, password_hash FROM users WHERE username = $1`, name,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash)
+		`SELECT id, username, password_hash, is_admin, disabled FROM users WHERE username = $1`, name,
+	).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.IsAdmin, &user.Disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -71,10 +73,10 @@ func (s *PGStore) CreateSession(ctx context.Context, userID int64, hash []byte, 
 func (s *PGStore) FindSessionUser(ctx context.Context, hash []byte) (User, error) {
 	var user User
 	err := s.db.QueryRow(ctx, `
-		SELECT u.id, u.username
+		SELECT u.id, u.username, u.is_admin, u.disabled
 		FROM sessions AS s JOIN users AS u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.expires_at > NOW()
-	`, hash).Scan(&user.ID, &user.Username)
+	`, hash).Scan(&user.ID, &user.Username, &user.IsAdmin, &user.Disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}

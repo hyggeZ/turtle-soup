@@ -12,7 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"turtle-soup/internal/account"
+	"turtle-soup/internal/admin"
 	"turtle-soup/internal/forum"
+	"turtle-soup/internal/room"
 	"turtle-soup/migrations"
 )
 
@@ -40,6 +42,8 @@ func main() {
 	auth := account.NewHandler(account.NewPGStore(db), os.Getenv("COOKIE_SECURE") == "true")
 	auth.Register(router)
 	forum.NewHandler(forum.NewStore(db), auth).Register(router)
+	admin.NewHandler(db, auth).Register(router)
+	room.NewHandler(db, auth).Register(router)
 	if err := router.Run(":18080"); err != nil {
 		log.Fatal(err)
 	}

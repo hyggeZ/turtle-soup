@@ -20,7 +20,7 @@ func NewHandler(store *Store, auth *account.Handler) *Handler {
 	return &Handler{store: store, auth: auth}
 }
 
-// Register 将论坛接口集中注册，房间玩法以后可作为独立模块加入。
+// Register 集中注册汤题与用户互动接口。
 func (h *Handler) Register(router *gin.Engine) {
 	router.GET("/api/soups", h.list)
 	router.GET("/api/soups/:id", h.get)
@@ -151,11 +151,21 @@ func (h *Handler) create(ctx *gin.Context) {
 }
 
 func (h *Handler) answer(ctx *gin.Context) {
-	if _, ok := h.requiredUser(ctx); !ok {
+	user, ok := h.requiredUser(ctx)
+	if !ok {
 		return
 	}
 	id, ok := idParam(ctx)
 	if !ok {
+		return
+	}
+	playing, err := h.store.Playing(ctx.Request.Context(), user, id)
+	if err != nil {
+		replyError(ctx, err)
+		return
+	}
+	if playing {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "正在参与此题对局，不能查看汤底"})
 		return
 	}
 	answer, err := h.store.Answer(ctx.Request.Context(), id)

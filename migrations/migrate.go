@@ -11,8 +11,14 @@ import (
 //go:embed 002_forum.sql
 var forumSQL string
 
-// Apply 仅补建论坛相关表；账号表由 compose 首次启动时创建。
+//go:embed 003_game.sql
+var gameSQL string
+
+// Apply 补建汤题和房间表；账号基础表由 compose 首次启动时创建。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
-	_, err := db.Exec(ctx, forumSQL)
+	if _, err := db.Exec(ctx, forumSQL); err != nil {
+		return err
+	}
+	_, err := db.Exec(ctx, gameSQL)
 	return err
 }

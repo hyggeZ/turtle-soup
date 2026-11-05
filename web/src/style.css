@@ -24,6 +24,28 @@ button:disabled { opacity: .45; cursor: default; }
 .text-button:hover, .account-button:hover { color: #111; text-decoration: underline; }
 
 .page-wrap { max-width: 1240px; margin: 0 auto; padding: 54px 28px 80px; }
+.body-layout { max-width: 1240px; margin: auto; display: grid; grid-template-columns: 180px minmax(0, 1fr); }
+.side-nav { padding: 48px 12px 20px 28px; border-right: 1px solid #ececec; min-height: calc(100vh - 72px); display: flex; flex-direction: column; gap: 4px; }
+.side-nav button { border: 0; background: none; text-align: left; padding: 11px 12px; color: #555; }
+.side-nav button.active { background: #f1f1f1; color: #111; font-weight: 650; }
+.body-layout .page-wrap { width: 100%; min-width: 0; padding-top: 48px; }
+.inline-form { display: flex; margin: 25px 0 35px; }
+.inline-form input { max-width: 360px; }
+.room-row, .event-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e7e7; padding: 18px 0; }
+.room-row p { margin: 6px 0 0; }
+.small-button, .event-actions button { border: 1px solid #bcbcbc; background: #fff; padding: 8px 12px; color: #222; }
+.room-summary { border-bottom: 1px solid #ddd; padding-bottom: 22px; }
+.room-summary .surface { font-size: 18px; }
+.members, .room-controls, .event-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.room-controls { margin: 24px 0; }
+.event-row { justify-content: flex-start; align-items: flex-start; flex-wrap: wrap; }
+.event-row strong { min-width: 90px; }
+.event-row span { flex: 1; white-space: pre-wrap; }
+.event-actions { width: 100%; padding-left: 106px; }
+.simple-table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+.simple-table th, .simple-table td { border-bottom: 1px solid #e6e6e6; padding: 12px; text-align: left; }
+.check-line { display: flex; align-items: center; gap: 10px; }
+.check-line input { width: auto; }
 .home-content { max-width: 850px; margin: 0 auto; }
 .home-content > h1 { margin-bottom: 32px; }
 h1 { margin: 0; font-size: 38px; line-height: 1.25; letter-spacing: -.04em; }
@@ -77,6 +99,9 @@ form > button { justify-self: start; }
   .header-inner { gap: 24px; padding: 0 18px; }
 }
 @media (max-width: 560px) {
+  .body-layout { display: block; }
+  .side-nav { min-height: 0; border-right: 0; border-bottom: 1px solid #eee; padding: 12px; flex-direction: row; overflow-x: auto; }
+  .side-nav button { white-space: nowrap; }
   .header-inner { min-height: 62px; gap: 14px; flex-wrap: wrap; padding: 12px 16px; }
   .brand { font-size: 21px; }
   .main-nav { order: 3; width: 100%; gap: 24px; }

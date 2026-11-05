@@ -41,7 +41,11 @@ func (h *Handler) CurrentUser(ctx *gin.Context) (User, error) {
 	if err != nil {
 		return User{}, ErrNotFound
 	}
-	return h.store.FindSessionUser(ctx.Request.Context(), hash)
+	user, err := h.store.FindSessionUser(ctx.Request.Context(), hash)
+	if err == nil && user.Disabled {
+		return User{}, ErrNotFound
+	}
+	return user, err
 }
 
 func (h *Handler) register(ctx *gin.Context) {
@@ -99,6 +103,10 @@ func (h *Handler) login(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
+	if user.Disabled {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "账号已停用"})
+		return
+	}
 
 	token, hash, err := newToken()
 	if err != nil {
@@ -127,6 +135,10 @@ func (h *Handler) me(ctx *gin.Context) {
 	}
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "读取用户失败"})
+		return
+	}
+	if user.Disabled {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "账号已停用"})
 		return
 	}
 	ctx.JSON(http.StatusOK, user)
