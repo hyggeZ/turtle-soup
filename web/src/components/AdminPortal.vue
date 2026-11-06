@@ -51,7 +51,7 @@ async function login() {
       </main>
     </div>
   </div>
-  <div v-else class="site-shell">
+  <div v-else class="site-shell admin-login-page">
     <header class="site-header">
       <div class="header-inner">
         <a class="brand" href="/admin">海龟汤后台</a>
@@ -59,7 +59,7 @@ async function login() {
       </div>
     </header>
     <main class="page-wrap">
-      <section class="panel auth">
+      <section class="panel auth admin-login-card">
         <h1>后台登录</h1>
         <form @submit.prevent="login">
           <label>用户名<input v-model="username" autocomplete="username" required /></label>

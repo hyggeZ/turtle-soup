@@ -10,7 +10,31 @@ const error = ref('')
 const message = ref('')
 const form = reactive({ username: '', password: '', role: 'user' })
 const passwordId = ref(0)
+const passwordName = ref('')
 const newPassword = ref('')
+const modal = ref('')
+const fieldsLocked = ref(true)
+
+function openCreate() {
+  form.username = ''
+  form.password = ''
+  form.role = 'user'
+  fieldsLocked.value = true
+  error.value = ''
+  modal.value = 'create'
+}
+function openPassword(item) {
+  passwordId.value = item.id
+  passwordName.value = item.username
+  newPassword.value = ''
+  error.value = ''
+  modal.value = 'password'
+}
+function closeModal() {
+  modal.value = ''
+  form.password = ''
+  newPassword.value = ''
+}
 
 async function load() {
   try {
@@ -27,6 +51,7 @@ async function create() {
     error.value = ''
     form.username = ''
     form.password = ''
+    closeModal()
     await load()
   } catch (cause) {
     error.value = cause.message
@@ -41,13 +66,13 @@ async function setDisabled(item) {
     error.value = cause.message
   }
 }
-async function resetPassword() {
+async function changePassword() {
   try {
     await send(`/api/admin/users/${passwordId.value}`, 'PATCH', { password: newPassword.value })
-    message.value = '密码已重置，该账号需要重新登录'
+    message.value = '密码已修改，该账号需要重新登录'
     error.value = ''
     passwordId.value = 0
-    newPassword.value = ''
+    closeModal()
   } catch (cause) {
     error.value = cause.message
   }
@@ -59,31 +84,18 @@ onMounted(load)
 </script>
 <template>
   <section class="panel admin-panel">
-    <h1>账号管理</h1>
-    <section class="admin-section">
-      <h2>创建账号</h2>
-      <form @submit.prevent="create">
-        <div class="admin-create-grid">
-          <label>用户名<input v-model="form.username" required maxlength="20" /></label>
-          <label>初始密码<input v-model="form.password" type="password" required minlength="8" /></label>
-          <label>角色
-            <select v-model="form.role">
-              <option value="user">普通用户</option>
-              <option v-if="role === 'super_admin'" value="admin">管理员</option>
-            </select>
-          </label>
-        </div>
-        <button class="admin-primary-button">创建账号</button>
-      </form>
-    </section>
+    <div class="admin-page-heading">
+      <div><p class="admin-eyebrow">用户与权限</p><h1>账号管理</h1></div>
+      <button class="admin-primary-button" @click="openCreate"><span aria-hidden="true">＋</span> 创建账号</button>
+    </div>
 
     <section class="admin-section">
-      <h2>账号列表</h2>
+      <div class="admin-section-heading"><h2>账号列表</h2><span>{{ users.length }} 个账号</span></div>
       <form class="inline-form admin-search" @submit.prevent="load">
         <input v-model="query" aria-label="搜索用户名" placeholder="搜索用户名" />
         <button class="admin-search-button">搜索</button>
       </form>
-      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="error && !modal" role="alert">{{ error }}</p>
       <p v-if="message" role="status">{{ message }}</p>
       <p class="admin-scroll-hint">左右滑动表格查看操作</p>
       <div class="admin-table-wrap">
@@ -93,12 +105,12 @@ onMounted(load)
             <tr v-for="item in users" :key="item.id">
               <td>{{ item.id }}</td>
               <td>{{ item.username }}</td>
-              <td><span class="admin-role">{{ item.role === 'super_admin' ? '超级管理员' : item.role === 'admin' ? '管理员' : '普通用户' }}</span></td>
+              <td><span class="admin-role" :class="item.role">{{ item.role === 'super_admin' ? '超级管理员' : item.role === 'admin' ? '管理员' : '普通用户' }}</span></td>
               <td><span class="admin-status" :class="{ disabled: item.disabled }">{{ item.disabled ? '已停用' : '正常' }}</span></td>
               <td v-if="canManage(item)">
                 <div class="admin-row-actions">
                   <button class="admin-table-button" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
-                  <button class="admin-table-button" @click="passwordId = item.id; newPassword = ''">重置密码</button>
+                  <button class="admin-table-button" @click="openPassword(item)">修改密码</button>
                 </div>
               </td>
               <td v-else></td>
@@ -106,13 +118,40 @@ onMounted(load)
           </tbody>
         </table>
       </div>
-      <form v-if="passwordId" class="reset-form" @submit.prevent="resetPassword">
-        <label>为账号 {{ passwordId }} 设置新密码<input v-model="newPassword" type="password" minlength="8" required /></label>
-        <div class="admin-row-actions">
-          <button class="admin-primary-button">确认重置</button>
-          <button type="button" class="admin-table-button" @click="passwordId = 0">取消</button>
-        </div>
-      </form>
     </section>
+
+    <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal" @keydown.esc="closeModal">
+      <section class="admin-modal" role="dialog" aria-modal="true" :aria-label="modal === 'create' ? '创建账号' : '修改密码'">
+        <div class="admin-modal-heading">
+          <div><p class="admin-eyebrow">账号管理</p><h2>{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2></div>
+          <button type="button" class="admin-close-button" aria-label="关闭弹窗" @click="closeModal">×</button>
+        </div>
+        <form v-if="modal === 'create'" autocomplete="off" @submit.prevent="create">
+          <label>用户名
+            <input v-model="form.username" name="new-account-name" autocomplete="off" :readonly="fieldsLocked" @focus="fieldsLocked = false" required maxlength="20" placeholder="输入用户名" />
+          </label>
+          <label>初始密码
+            <input v-model="form.password" name="new-account-secret" type="password" autocomplete="new-password" :readonly="fieldsLocked" @focus="fieldsLocked = false" required minlength="8" placeholder="至少 8 位" />
+          </label>
+          <label>角色
+            <select v-model="form.role">
+              <option value="user">普通用户</option>
+              <option v-if="role === 'super_admin'" value="admin">管理员</option>
+            </select>
+          </label>
+          <p v-if="error" role="alert">{{ error }}</p>
+          <div class="admin-modal-actions"><button type="button" class="admin-secondary-button" @click="closeModal">取消</button><button class="admin-primary-button">创建账号</button></div>
+        </form>
+        <form v-else autocomplete="off" @submit.prevent="changePassword">
+          <p class="admin-form-note">账号：{{ passwordName }}</p>
+          <label>新密码
+            <input v-model="newPassword" name="updated-account-secret" type="password" autocomplete="new-password" required minlength="8" placeholder="输入新密码" />
+          </label>
+          <p class="admin-form-note">修改后，该账号需要重新登录。</p>
+          <p v-if="error" role="alert">{{ error }}</p>
+          <div class="admin-modal-actions"><button type="button" class="admin-secondary-button" @click="closeModal">取消</button><button class="admin-primary-button">保存密码</button></div>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
