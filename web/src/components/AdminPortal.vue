@@ -9,6 +9,9 @@ const emit = defineEmits(['logged-in', 'logout'])
 const username = ref('')
 const password = ref('')
 const error = ref('')
+// 后续后台页面在这里增加导航项，再接入对应的内容组件。
+const pages = [{ id: 'users', title: '账号管理' }]
+const page = ref('users')
 async function login() {
   try {
     const user = await send('/api/admin/login', 'POST', { username: username.value, password: password.value })
@@ -21,18 +24,42 @@ async function login() {
 }
 </script>
 <template>
-  <div class="site-shell">
-    <header class="site-header"><div class="header-inner">
-      <a class="brand" href="/admin">海龟汤后台</a>
-      <div class="header-actions">
-        <a class="text-button" href="/">游戏系统</a>
-        <span v-if="user?.isAdmin">@{{ user.username }}</span>
-        <button v-if="user?.isAdmin" class="text-button" @click="emit('logout')">退出</button>
+  <div v-if="user?.isAdmin" class="admin-layout">
+    <aside class="admin-sidebar" aria-label="后台导航">
+      <a class="admin-brand" href="/admin">海龟汤后台</a>
+      <nav class="admin-nav">
+        <span class="admin-nav-title">管理</span>
+        <button
+          v-for="item in pages"
+          :key="item.id"
+          :class="{ active: page === item.id }"
+          @click="page = item.id"
+        >{{ item.title }}</button>
+      </nav>
+      <a class="admin-back-link" href="/">返回游戏系统</a>
+    </aside>
+    <div class="admin-workspace">
+      <header class="admin-topbar">
+        <span>管理后台</span>
+        <div class="admin-user">
+          <span>{{ user.role === 'super_admin' ? '超级管理员' : '管理员' }} · {{ user.username }}</span>
+          <button class="text-button" @click="emit('logout')">退出</button>
+        </div>
+      </header>
+      <main class="admin-main">
+        <AdminPanel v-if="page === 'users'" :role="user.role" />
+      </main>
+    </div>
+  </div>
+  <div v-else class="site-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="/admin">海龟汤后台</a>
+        <div class="header-actions"><a class="text-button" href="/">返回游戏系统</a></div>
       </div>
-    </div></header>
+    </header>
     <main class="page-wrap">
-      <AdminPanel v-if="user?.isAdmin" :role="user.role" />
-      <section v-else class="panel auth">
+      <section class="panel auth">
         <h1>后台登录</h1>
         <form @submit.prevent="login">
           <label>用户名<input v-model="username" autocomplete="username" required /></label>

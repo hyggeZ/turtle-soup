@@ -60,48 +60,59 @@ onMounted(load)
 <template>
   <section class="panel admin-panel">
     <h1>账号管理</h1>
-    <h2>创建账号</h2>
-    <form @submit.prevent="create">
-      <div class="form-row">
-        <label>用户名<input v-model="form.username" required maxlength="20" /></label>
-        <label>初始密码<input v-model="form.password" type="password" required minlength="8" /></label>
-        <label>角色
-          <select v-model="form.role">
-            <option value="user">普通用户</option>
-            <option v-if="role === 'super_admin'" value="admin">管理员</option>
-          </select>
-        </label>
-      </div>
-      <button>创建</button>
-    </form>
+    <section class="admin-section">
+      <h2>创建账号</h2>
+      <form @submit.prevent="create">
+        <div class="admin-create-grid">
+          <label>用户名<input v-model="form.username" required maxlength="20" /></label>
+          <label>初始密码<input v-model="form.password" type="password" required minlength="8" /></label>
+          <label>角色
+            <select v-model="form.role">
+              <option value="user">普通用户</option>
+              <option v-if="role === 'super_admin'" value="admin">管理员</option>
+            </select>
+          </label>
+        </div>
+        <button class="admin-primary-button">创建账号</button>
+      </form>
+    </section>
 
-    <h2>账号列表</h2>
-    <form class="inline-form" @submit.prevent="load">
-      <input v-model="query" placeholder="搜索用户名" />
-      <button>搜索</button>
-    </form>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="message" role="status">{{ message }}</p>
-    <table class="simple-table">
-      <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody>
-        <tr v-for="item in users" :key="item.id">
-          <td>{{ item.id }}</td>
-          <td>{{ item.username }}</td>
-          <td>{{ item.role === 'super_admin' ? '超级管理员' : item.role === 'admin' ? '管理员' : '普通用户' }}</td>
-          <td>{{ item.disabled ? '已停用' : '正常' }}</td>
-          <td v-if="canManage(item)">
-            <button class="text-button" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
-            <button class="text-button" @click="passwordId = item.id; newPassword = ''">重置密码</button>
-          </td>
-          <td v-else></td>
-        </tr>
-      </tbody>
-    </table>
-    <form v-if="passwordId" class="reset-form" @submit.prevent="resetPassword">
-      <label>为账号 {{ passwordId }} 设置新密码<input v-model="newPassword" type="password" minlength="8" required /></label>
-      <button>确认重置</button>
-      <button type="button" class="small-button" @click="passwordId = 0">取消</button>
-    </form>
+    <section class="admin-section">
+      <h2>账号列表</h2>
+      <form class="inline-form admin-search" @submit.prevent="load">
+        <input v-model="query" aria-label="搜索用户名" placeholder="搜索用户名" />
+        <button class="admin-search-button">搜索</button>
+      </form>
+      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="message" role="status">{{ message }}</p>
+      <p class="admin-scroll-hint">左右滑动表格查看操作</p>
+      <div class="admin-table-wrap">
+        <table class="simple-table">
+          <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="item in users" :key="item.id">
+              <td>{{ item.id }}</td>
+              <td>{{ item.username }}</td>
+              <td><span class="admin-role">{{ item.role === 'super_admin' ? '超级管理员' : item.role === 'admin' ? '管理员' : '普通用户' }}</span></td>
+              <td><span class="admin-status" :class="{ disabled: item.disabled }">{{ item.disabled ? '已停用' : '正常' }}</span></td>
+              <td v-if="canManage(item)">
+                <div class="admin-row-actions">
+                  <button class="admin-table-button" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
+                  <button class="admin-table-button" @click="passwordId = item.id; newPassword = ''">重置密码</button>
+                </div>
+              </td>
+              <td v-else></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <form v-if="passwordId" class="reset-form" @submit.prevent="resetPassword">
+        <label>为账号 {{ passwordId }} 设置新密码<input v-model="newPassword" type="password" minlength="8" required /></label>
+        <div class="admin-row-actions">
+          <button class="admin-primary-button">确认重置</button>
+          <button type="button" class="admin-table-button" @click="passwordId = 0">取消</button>
+        </div>
+      </form>
+    </section>
   </section>
 </template>
