@@ -1,4 +1,4 @@
-// Package admin 提供仅管理员可用的账号管理接口。
+// Package admin 管理后台用户和角色，所有权限都由后端检查。
 package admin
 
 import (
@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 	"turtle-soup/internal/account"
 )
 
@@ -21,14 +24,17 @@ type Handler struct {
 func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
 	return &Handler{db: db, auth: auth}
 }
+
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/admin/users", h.list)
+	r.POST("/api/admin/users", h.create)
 	r.PATCH("/api/admin/users/:id", h.update)
 }
-func (h *Handler) administrator(c *gin.Context) (account.User, bool) {
+
+func (h *Handler) operator(c *gin.Context) (account.User, bool) {
 	u, err := h.auth.CurrentUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录后台"})
 		return u, false
 	}
 	if !u.IsAdmin {
@@ -37,12 +43,19 @@ func (h *Handler) administrator(c *gin.Context) (account.User, bool) {
 	}
 	return u, true
 }
+
+// 管理员可以查看普通用户；超级管理员还可以查看管理员。
 func (h *Handler) list(c *gin.Context) {
-	if _, ok := h.administrator(c); !ok {
+	u, ok := h.operator(c)
+	if !ok {
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
-	rows, err := h.db.Query(c.Request.Context(), `SELECT id,username,is_admin,disabled,created_at FROM users WHERE username ILIKE '%' || $1 || '%' ORDER BY id DESC LIMIT 100`, q)
+	rows, err := h.db.Query(c.Request.Context(), `
+		SELECT id,username,role,disabled,created_at FROM users
+		WHERE username ILIKE '%' || $1 || '%'
+		AND (role='user' OR $2='super_admin')
+		ORDER BY id DESC LIMIT 100`, q, u.Role)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "读取账号失败"})
 		return
@@ -51,23 +64,74 @@ func (h *Handler) list(c *gin.Context) {
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id int64
-		var name string
-		var admin, disabled bool
-		var created interface{}
-		if rows.Scan(&id, &name, &admin, &disabled, &created) != nil {
-			c.JSON(500, gin.H{"error": "读取账号失败"})
-			return
+		var name, role string
+		var disabled bool
+		var created time.Time
+		if err = rows.Scan(&id, &name, &role, &disabled, &created); err != nil {
+			break
 		}
-		items = append(items, gin.H{"id": id, "username": name, "isAdmin": admin, "disabled": disabled, "createdAt": created})
+		items = append(items, gin.H{"id": id, "username": name, "role": role, "disabled": disabled, "createdAt": created})
 	}
-	if rows.Err() != nil {
+	if err != nil || rows.Err() != nil {
 		c.JSON(500, gin.H{"error": "读取账号失败"})
 		return
 	}
 	c.JSON(200, items)
 }
+
+type createInput struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+// 创建普通账号对管理员开放；创建管理员仅超级管理员可用。
+func (h *Handler) create(c *gin.Context) {
+	u, ok := h.operator(c)
+	if !ok {
+		return
+	}
+	var in createInput
+	if c.ShouldBindJSON(&in) != nil {
+		c.JSON(400, gin.H{"error": "请求内容无效"})
+		return
+	}
+	in.Username = strings.ToLower(strings.TrimSpace(in.Username))
+	if !account.ValidUsername(in.Username) || len(in.Password) < 8 || len([]byte(in.Password)) > 72 || (in.Role != "user" && in.Role != "admin") {
+		c.JSON(400, gin.H{"error": "用户名、密码或角色无效"})
+		return
+	}
+	if in.Role == "admin" && u.Role != "super_admin" {
+		c.JSON(403, gin.H{"error": "只有超级管理员能创建管理员"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "创建账号失败"})
+		return
+	}
+	var id int64
+	err = h.db.QueryRow(c.Request.Context(), `INSERT INTO users(username,password_hash,role,is_admin) VALUES($1,$2,$3,$3='admin') RETURNING id`, in.Username, string(hash), in.Role).Scan(&id)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		c.JSON(409, gin.H{"error": "用户名已存在"})
+		return
+	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "创建账号失败"})
+		return
+	}
+	c.JSON(201, gin.H{"id": id, "username": in.Username, "role": in.Role})
+}
+
+type updateInput struct {
+	Disabled *bool  `json:"disabled"`
+	Password string `json:"password"`
+}
+
+// 只允许管理低于自己级别的账号，修改密码或停用后立即撤销该账号会话。
 func (h *Handler) update(c *gin.Context) {
-	operator, ok := h.administrator(c)
+	u, ok := h.operator(c)
 	if !ok {
 		return
 	}
@@ -76,29 +140,66 @@ func (h *Handler) update(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "账号 ID 无效"})
 		return
 	}
-	if id == operator.ID {
-		c.JSON(400, gin.H{"error": "不能停用自己的账号"})
+	if id == u.ID {
+		c.JSON(400, gin.H{"error": "不能修改自己的后台账号"})
 		return
 	}
-	var input struct {
-		Disabled *bool `json:"disabled"`
-	}
-	if c.ShouldBindJSON(&input) != nil || input.Disabled == nil {
-		c.JSON(400, gin.H{"error": "请填写账号状态"})
+	var in updateInput
+	if c.ShouldBindJSON(&in) != nil || (in.Disabled == nil && in.Password == "") {
+		c.JSON(400, gin.H{"error": "请填写账号状态或新密码"})
 		return
 	}
-	var name string
-	err = h.db.QueryRow(c.Request.Context(), `UPDATE users SET disabled=$2 WHERE id=$1 AND is_admin=FALSE RETURNING username`, id, *input.Disabled).Scan(&name)
+	if in.Password != "" && (len(in.Password) < 8 || len([]byte(in.Password)) > 72) {
+		c.JSON(400, gin.H{"error": "新密码需为 8–72 字节"})
+		return
+	}
+	tx, err := h.db.Begin(c.Request.Context())
+	if err != nil {
+		c.JSON(500, gin.H{"error": "修改失败"})
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	var role string
+	err = tx.QueryRow(c.Request.Context(), `SELECT role FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(404, gin.H{"error": "账号不存在或不能修改管理员"})
+		c.JSON(404, gin.H{"error": "账号不存在"})
 		return
 	}
 	if err != nil {
-		c.JSON(500, gin.H{"error": "更新账号失败"})
+		c.JSON(500, gin.H{"error": "修改失败"})
 		return
 	}
-	if *input.Disabled {
-		_, _ = h.db.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id=$1`, id)
+	if role == "super_admin" || (role == "admin" && u.Role != "super_admin") {
+		c.JSON(403, gin.H{"error": "不能管理同级或更高级的账号"})
+		return
 	}
-	c.JSON(200, gin.H{"id": id, "username": name, "disabled": *input.Disabled})
+	if in.Disabled != nil {
+		_, err = tx.Exec(c.Request.Context(), `UPDATE users SET disabled=$2 WHERE id=$1`, id, *in.Disabled)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "修改失败"})
+			return
+		}
+	}
+	if in.Password != "" {
+		hash, hashErr := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+		if hashErr != nil {
+			c.JSON(500, gin.H{"error": "修改失败"})
+			return
+		}
+		_, err = tx.Exec(c.Request.Context(), `UPDATE users SET password_hash=$2 WHERE id=$1`, id, string(hash))
+		if err != nil {
+			c.JSON(500, gin.H{"error": "修改失败"})
+			return
+		}
+	}
+	_, err = tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id=$1`, id)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "修改失败"})
+		return
+	}
+	if err = tx.Commit(c.Request.Context()); err != nil {
+		c.JSON(500, gin.H{"error": "修改失败"})
+		return
+	}
+	c.JSON(200, gin.H{"id": id, "role": role})
 }

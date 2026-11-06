@@ -14,6 +14,8 @@ import (
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
 
+func ValidUsername(name string) bool { return usernamePattern.MatchString(name) }
+
 type Handler struct {
 	store  Store
 	secure bool
@@ -31,6 +33,7 @@ func NewHandler(store Store, secureCookie bool) *Handler {
 func (h *Handler) Register(router *gin.Engine) {
 	router.POST("/api/register", h.register)
 	router.POST("/api/login", h.login)
+	router.POST("/api/admin/login", h.adminLogin)
 	router.GET("/api/me", h.me)
 	router.POST("/api/logout", h.logout)
 }
@@ -56,7 +59,7 @@ func (h *Handler) register(ctx *gin.Context) {
 		return
 	}
 	name := strings.ToLower(strings.TrimSpace(input.Username))
-	if !usernamePattern.MatchString(name) {
+	if !ValidUsername(name) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "用户名需为 3–20 位字母、数字或下划线"})
 		return
 	}
@@ -83,6 +86,15 @@ func (h *Handler) register(ctx *gin.Context) {
 }
 
 func (h *Handler) login(ctx *gin.Context) {
+	h.loginWithRole(ctx, false)
+}
+
+// 后台登录使用相同的会话，但会在创建会话前检查角色。
+func (h *Handler) adminLogin(ctx *gin.Context) {
+	h.loginWithRole(ctx, true)
+}
+
+func (h *Handler) loginWithRole(ctx *gin.Context, adminOnly bool) {
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 4<<10)
 	var input credentials
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -105,6 +117,10 @@ func (h *Handler) login(ctx *gin.Context) {
 	}
 	if user.Disabled {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "账号已停用"})
+		return
+	}
+	if adminOnly && !user.IsAdmin {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "无后台登录权限"})
 		return
 	}
 

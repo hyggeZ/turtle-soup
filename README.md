@@ -39,10 +39,14 @@ npm install
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173`。运行后端测试：`go test ./...`。
+游戏入口为 `http://127.0.0.1:5173/`，后台入口为 `http://127.0.0.1:5173/admin`。运行后端测试：`go test ./...`。
 
-已有本地数据库时，启动后端会自动补建业务表；首次启动数据库会创建账号表。管理员先注册普通账号，再用本地命令授予管理权限：
+已有本地数据库时，启动后端会自动补建业务表；首次启动数据库会创建账号表。用本地命令初始化或重设超级管理员 `king`：
 
 ```powershell
-go run ./cmd/admin -username 你的用户名
+$env:SUPER_ADMIN_PASSWORD = "设置你的密码"
+go run ./cmd/admin
+Remove-Item Env:SUPER_ADMIN_PASSWORD
 ```
+
+后台可创建普通账号；超级管理员还可创建管理员。管理员只能管理普通账号，超级管理员可以管理管理员和普通账号。

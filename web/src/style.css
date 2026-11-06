@@ -44,6 +44,9 @@ button:disabled { opacity: .45; cursor: default; }
 .event-actions { width: 100%; padding-left: 106px; }
 .simple-table { width: 100%; border-collapse: collapse; margin-top: 24px; }
 .simple-table th, .simple-table td { border-bottom: 1px solid #e6e6e6; padding: 12px; text-align: left; }
+.simple-table td .text-button { margin-right: 16px; }
+.admin-panel h2 { margin-top: 42px; }
+.reset-form { margin-top: 24px; }
 .check-line { display: flex; align-items: center; gap: 10px; }
 .check-line input { width: auto; }
 .home-content { max-width: 850px; margin: 0 auto; }

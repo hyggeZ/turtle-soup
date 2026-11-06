@@ -14,11 +14,17 @@ var forumSQL string
 //go:embed 003_game.sql
 var gameSQL string
 
+//go:embed 004_roles.sql
+var rolesSQL string
+
 // Apply 补建汤题和房间表；账号基础表由 compose 首次启动时创建。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err := db.Exec(ctx, forumSQL); err != nil {
 		return err
 	}
-	_, err := db.Exec(ctx, gameSQL)
+	if _, err := db.Exec(ctx, gameSQL); err != nil {
+		return err
+	}
+	_, err := db.Exec(ctx, rolesSQL)
 	return err
 }
