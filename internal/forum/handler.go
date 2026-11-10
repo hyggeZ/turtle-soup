@@ -90,21 +90,39 @@ func replyError(ctx *gin.Context, err error) {
 }
 
 func (h *Handler) list(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	if page < 1 || page > 10000 {
+	page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	if err != nil || page < 1 || page > 10000 {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "页码无效"})
 		return
 	}
-	author := int64(0)
+	filter := ListFilter{Horror: -1}
 	if raw := ctx.Query("author"); raw != "" {
-		var err error
-		author, err = strconv.ParseInt(raw, 10, 64)
-		if err != nil || author < 1 {
+		filter.AuthorID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || filter.AuthorID < 1 {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "作者 ID 无效"})
 			return
 		}
 	}
-	items, err := h.store.List(ctx.Request.Context(), h.viewer(ctx), author, 20, (page-1)*20)
+	filter.Genre = ctx.Query("genre")
+	if filter.Genre != "" && filter.Genre != "本格" && filter.Genre != "变格" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "题目类型无效"})
+		return
+	}
+	if raw := ctx.Query("difficulty"); raw != "" {
+		filter.Difficulty, err = strconv.Atoi(raw)
+		if err != nil || filter.Difficulty < 1 || filter.Difficulty > 5 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "难度无效"})
+			return
+		}
+	}
+	if raw := ctx.Query("horror"); raw != "" {
+		filter.Horror, err = strconv.Atoi(raw)
+		if err != nil || filter.Horror < 0 || filter.Horror > 5 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "恐怖程度无效"})
+			return
+		}
+	}
+	items, err := h.store.List(ctx.Request.Context(), h.viewer(ctx), filter, 20, (page-1)*20)
 	if err != nil {
 		replyError(ctx, err)
 		return

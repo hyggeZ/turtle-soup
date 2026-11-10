@@ -56,6 +56,14 @@ type Store struct{ db *pgxpool.Pool }
 
 func NewStore(db *pgxpool.Pool) *Store { return &Store{db: db} }
 
+// ListFilter 的空类型、0 难度和 -1 恐怖程度表示不筛选。
+type ListFilter struct {
+	AuthorID   int64
+	Genre      string
+	Difficulty int
+	Horror     int
+}
+
 // 列表只查询汤面；汤底必须经过单独的接口读取。
 const soupFields = `s.id, s.author_id, u.username, s.title, s.surface, s.genre,
 	s.difficulty, s.horror, s.created_at,
@@ -82,10 +90,13 @@ func scanSoup(row pgx.Row, detail bool) (Soup, error) {
 	return soup, err
 }
 
-func (s *Store) List(ctx context.Context, viewer int64, author int64, limit, offset int) ([]Soup, error) {
+func (s *Store) List(ctx context.Context, viewer int64, filter ListFilter, limit, offset int) ([]Soup, error) {
 	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id = s.author_id
-		WHERE s.deleted_at IS NULL AND ($2 = 0 OR s.author_id = $2) ORDER BY s.created_at DESC, s.id DESC LIMIT $3 OFFSET $4`
-	rows, err := s.db.Query(ctx, query, viewer, author, limit, offset)
+		WHERE s.deleted_at IS NULL AND ($2 = 0 OR s.author_id = $2)
+		AND ($3 = '' OR s.genre = $3) AND ($4 = 0 OR s.difficulty = $4)
+		AND ($5 = -1 OR s.horror = $5)
+		ORDER BY s.created_at DESC, s.id DESC LIMIT $6 OFFSET $7`
+	rows, err := s.db.Query(ctx, query, viewer, filter.AuthorID, filter.Genre, filter.Difficulty, filter.Horror, limit, offset)
 	if err != nil {
 		return nil, err
 	}
