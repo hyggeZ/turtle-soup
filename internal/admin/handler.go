@@ -14,21 +14,32 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 	"turtle-soup/internal/account"
+	"turtle-soup/internal/telemetry"
 )
 
 type Handler struct {
-	db   *pgxpool.Pool
-	auth *account.Handler
+	db      *pgxpool.Pool
+	auth    *account.Handler
+	monitor *telemetry.Store
 }
 
-func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
-	return &Handler{db: db, auth: auth}
+func NewHandler(db *pgxpool.Pool, auth *account.Handler, monitor *telemetry.Store) *Handler {
+	return &Handler{db: db, auth: auth, monitor: monitor}
 }
 
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/admin/users", h.list)
 	r.POST("/api/admin/users", h.create)
 	r.PATCH("/api/admin/users/:id", h.update)
+	r.GET("/api/admin/telemetry", h.telemetry)
+}
+
+// 日志统计只对后台账号开放，返回路由与耗时，不暴露请求体。
+func (h *Handler) telemetry(c *gin.Context) {
+	if _, ok := h.operator(c); !ok {
+		return
+	}
+	c.JSON(http.StatusOK, h.monitor.Snapshot())
 }
 
 func (h *Handler) operator(c *gin.Context) (account.User, bool) {

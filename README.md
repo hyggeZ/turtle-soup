@@ -11,6 +11,7 @@ internal/account/   注册、登录与会话
 internal/forum/     汤题、互动与用户资料
 internal/room/      房间与对局规则
 internal/admin/     账号管理接口
+internal/telemetry/ 请求追踪与结构化日志
 migrations/         PostgreSQL 建表 SQL
 web/src/components/ Vue 页面组件
 compose.yaml        本地数据库
@@ -50,3 +51,5 @@ Remove-Item Env:SUPER_ADMIN_PASSWORD
 ```
 
 后台可创建普通账号；超级管理员还可创建管理员。管理员只能管理普通账号，超级管理员可以管理管理员和普通账号。
+
+后台的“运行日志”展示最近请求、各阶段耗时和日志文件占用。日志默认写入 `.local/logs/`，可通过 `LOG_DIR` 修改目录；请求与数据库查询不会记录正文、Cookie 和 SQL 参数。

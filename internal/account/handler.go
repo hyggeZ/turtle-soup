@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"turtle-soup/internal/telemetry"
 )
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
@@ -40,6 +41,7 @@ func (h *Handler) Register(router *gin.Engine) {
 
 // CurrentUser 读取请求中的会话，供其他业务模块判断登录状态。
 func (h *Handler) CurrentUser(ctx *gin.Context) (User, error) {
+	defer telemetry.Begin(ctx.Request.Context(), "auth.session")()
 	hash, err := tokenHash(ctx.Request)
 	if err != nil {
 		return User{}, ErrNotFound

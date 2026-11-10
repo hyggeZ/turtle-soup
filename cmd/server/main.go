@@ -15,6 +15,7 @@ import (
 	"turtle-soup/internal/admin"
 	"turtle-soup/internal/forum"
 	"turtle-soup/internal/room"
+	"turtle-soup/internal/telemetry"
 	"turtle-soup/migrations"
 )
 
@@ -24,9 +25,24 @@ func main() {
 		log.Fatal("请先设置 DATABASE_URL")
 	}
 
+	logDir := os.Getenv("LOG_DIR")
+	if logDir == "" {
+		logDir = ".local/logs"
+	}
+	monitor, err := telemetry.NewStore(logDir)
+	if err != nil {
+		log.Fatal("初始化日志失败: ", err)
+	}
+	defer monitor.Close()
+	config, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		log.Fatal("数据库配置无效: ", err)
+	}
+	config.ConnConfig.Tracer = monitor
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	db, err := pgxpool.New(ctx, url)
+	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,20 +54,20 @@ func main() {
 		log.Fatal("初始化论坛数据表失败: ", err)
 	}
 
-	router := newRouter()
+	router := newRouter(monitor)
 	auth := account.NewHandler(account.NewPGStore(db), os.Getenv("COOKIE_SECURE") == "true")
 	auth.Register(router)
 	forum.NewHandler(forum.NewStore(db), auth).Register(router)
-	admin.NewHandler(db, auth).Register(router)
+	admin.NewHandler(db, auth, monitor).Register(router)
 	room.NewHandler(db, auth).Register(router)
 	if err := router.Run(":18080"); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func newRouter() *gin.Engine {
+func newRouter(monitor *telemetry.Store) *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(monitor.Middleware(), gin.Recovery())
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
