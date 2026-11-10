@@ -3,65 +3,18 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
 func loadEvalCases(t *testing.T) []EvalCase {
 	t.Helper()
-	data, err := os.ReadFile("testdata/eval_cases.json")
+	cases, err := LoadEvalCases()
 	if err != nil {
 		t.Fatal(err)
-	}
-	var cases []EvalCase
-	if err := json.Unmarshal(data, &cases); err != nil {
-		t.Fatal(err)
-	}
-	restoreData, err := os.ReadFile("testdata/restore_cases.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var groups []struct {
-		ID    string `json:"id"`
-		Soup  Soup   `json:"soup"`
-		Cases []struct {
-			ID       string `json:"id"`
-			Input    string `json:"input"`
-			Expected string `json:"expected"`
-		} `json:"cases"`
-	}
-	if err := json.Unmarshal(restoreData, &groups); err != nil {
-		t.Fatal(err)
-	}
-	if len(groups) < 20 {
-		t.Fatalf("还原评测题目不足 20 道：%d", len(groups))
-	}
-	for _, group := range groups {
-		if group.ID == "" || group.Soup.Title == "" || group.Soup.Surface == "" || group.Soup.Answer == "" || len(group.Cases) < 5 {
-			t.Fatalf("还原评测题目无效：%s", group.ID)
-		}
-		labels := map[string]int{}
-		for _, item := range group.Cases {
-			if item.ID == "" || item.Input == "" || !oneOf(item.Expected, "正确", "不完整", "错误") {
-				t.Fatalf("还原评测样例无效：%s/%s", group.ID, item.ID)
-			}
-			labels[item.Expected]++
-			cases = append(cases, EvalCase{ID: item.ID, Soup: group.Soup, Kind: "restore", Input: item.Input, Expected: item.Expected})
-		}
-		if labels["正确"] == 0 || labels["不完整"] == 0 || labels["错误"] == 0 {
-			t.Fatalf("还原评测类别不全：%s", group.ID)
-		}
-	}
-	seen := map[string]bool{}
-	for _, sample := range cases {
-		if sample.ID == "" || sample.Soup.Answer == "" || sample.Input == "" ||
-			!oneOf(sample.Kind, "question", "restore") ||
-			sample.Kind == "question" && !oneOf(sample.Expected, "是", "否", "无关") ||
-			sample.Kind == "restore" && !oneOf(sample.Expected, "正确", "错误", "不完整") || seen[sample.ID] {
-			t.Fatalf("评测样例无效：%s", sample.ID)
-		}
-		seen[sample.ID] = true
 	}
 	return cases
 }
@@ -70,6 +23,9 @@ func TestGoldenSet(t *testing.T) {
 	cases := loadEvalCases(t)
 	if len(cases) < 108 {
 		t.Fatalf("评测样例不足：%d", len(cases))
+	}
+	if len(EvalSetHash()) != 64 {
+		t.Fatal("评测集摘要无效")
 	}
 }
 
@@ -160,6 +116,22 @@ func TestFalseCorrectRateExcludesFailedClassifications(t *testing.T) {
 				t.Fatalf("失败样例影响了错误完结率：%+v", report)
 			}
 		})
+	}
+}
+
+func TestEvaluateDoesNotExposeProviderText(t *testing.T) {
+	replay := &evalReplay{
+		results: map[string]Decision{"bad": {Result: "私密汤底"}},
+		errors:  map[string]error{"bad": errors.New("secret-api-key 私密汤底")},
+		history: map[string]int{},
+	}
+	report := Evaluate(context.Background(), replay, []EvalCase{{ID: "bad", Kind: "restore", Input: "bad", Expected: "错误"}})
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "私密汤底") || strings.Contains(string(data), "secret-api-key") || report.Items[0].Error != "evaluation_error" {
+		t.Fatalf("评测报告泄露上游异常内容：%s", data)
 	}
 }
 

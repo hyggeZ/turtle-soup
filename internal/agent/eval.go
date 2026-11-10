@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 )
@@ -93,6 +94,21 @@ func distribution(values []float64) MetricDistribution {
 	return MetricDistribution{Count: len(values), Min: values[0], P50: percentile(.5), P95: percentile(.95), Max: values[len(values)-1]}
 }
 
+func evalError(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidOutput):
+		return "invalid_output"
+	case errors.Is(err, ErrUnavailable):
+		return "provider_unavailable"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	default:
+		return "evaluation_error"
+	}
+}
+
 // Evaluate 计算分类混淆、错误完结风险和调用开销；结果不包含汤底。
 func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport {
 	report := EvalReport{
@@ -123,7 +139,8 @@ func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport
 		item := EvalItem{ID: sample.ID, Kind: sample.Kind, Expected: sample.Expected, Actual: decision.Result}
 		if err != nil {
 			report.Errors++
-			item.Error = err.Error()
+			item.Actual = ""
+			item.Error = evalError(err)
 		} else {
 			report.AverageLatencyMS += decision.LatencyMS
 			report.PromptTokens += decision.PromptTokens
