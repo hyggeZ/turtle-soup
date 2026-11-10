@@ -128,6 +128,9 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &roomInfo); err != nil {
 		t.Fatal(err)
 	}
+	if len(roomInfo.Code) != 32 {
+		t.Fatalf("新房间码应有 128 位随机性，实际长度为 %d", len(roomInfo.Code))
+	}
 	roomID = roomInfo.ID
 	joinPath := "/api/rooms/join"
 	joinBody := map[string]string{"code": roomInfo.Code}
@@ -307,6 +310,23 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		return conn
 	}
 	conn := dial(cookies[2])
+	conn2 := dial(cookies[2])
+	defer conn2.CloseNow()
+	conn3 := dial(cookies[2])
+	defer conn3.CloseNow()
+	header := http.Header{}
+	header.Set("Cookie", cookies[2].String())
+	header.Set("Origin", server.URL)
+	extra, response, dialErr := websocket.Dial(ctx, socketURL, &websocket.DialOptions{HTTPHeader: header})
+	if extra != nil {
+		extra.CloseNow()
+	}
+	if response != nil && response.Body != nil {
+		response.Body.Close()
+	}
+	if dialErr == nil || response == nil || response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("第 4 个实时连接未被限制：status=%v err=%v", response, dialErr)
+	}
 	if res := action(cookies[1], "question", "question_001", map[string]any{"body": "测试问题"}); res.Code != http.StatusOK {
 		t.Fatalf("提问失败：%d %s", res.Code, res.Body.String())
 	}
@@ -317,6 +337,8 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		t.Fatalf("未收到房间变化提示：%s %v", notice, err)
 	}
 	conn.CloseNow()
+	conn2.CloseNow()
+	conn3.CloseNow()
 	waitStatus := func(want string) {
 		t.Helper()
 		for i := 0; i < 40; i++ {
@@ -570,5 +592,25 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	}
 	if err := json.Unmarshal(call(http.MethodGet, path, nil, cookies[4]).Body.Bytes(), &turn); err != nil || turn.TurnUserID != users[1] {
 		t.Fatalf("退席后跳过了下一位玩家：id=%d err=%v", turn.TurnUserID, err)
+	}
+
+	// 多次猜错房间码后，已在房间中的成员仍可以凭原码重连。
+	blocked := false
+	wrongCode := map[string]string{"code": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"}
+	for i := 0; i <= 40; i++ {
+		res := call(http.MethodPost, joinPath, wrongCode, cookies[1])
+		if res.Code == http.StatusTooManyRequests {
+			blocked = true
+			break
+		}
+		if res.Code != http.StatusNotFound {
+			t.Fatalf("错误房间码返回 %d：%s", res.Code, res.Body.String())
+		}
+	}
+	if !blocked {
+		t.Fatal("错误房间码未触发试码限制")
+	}
+	if res := call(http.MethodPost, joinPath, map[string]string{"code": roomInfo.Code}, cookies[1]); res.Code != http.StatusOK {
+		t.Fatalf("试码限额耗尽后，成员无法重连：%d %s", res.Code, res.Body.String())
 	}
 }

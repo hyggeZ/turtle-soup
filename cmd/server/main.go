@@ -84,8 +84,7 @@ func main() {
 
 func newRouter(monitor *telemetry.Store) *gin.Engine {
 	router := gin.New()
-	_ = router.SetTrustedProxies(nil)
-	// 目前直接接收请求；不信任客户端伪造的代理 IP 头。
+	// 默认不信任客户端伪造的代理 IP 头。
 	if err := router.SetTrustedProxies(nil); err != nil {
 		panic(err)
 	}

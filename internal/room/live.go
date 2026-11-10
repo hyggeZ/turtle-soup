@@ -2,6 +2,7 @@ package room
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -9,20 +10,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxRoomConnections = 3
+const maxUserConnections = 12
+
 // liveHub 只推送“房间有变化”的提示；私有内容仍由带权限检查的 HTTP 快照提供。
 type liveHub struct {
 	mu      sync.Mutex
 	viewers map[int64]map[chan struct{}]struct{}
 	users   map[int64]map[int64]int
+	total   map[int64]int
 }
 
 func newLiveHub() *liveHub {
-	return &liveHub{viewers: make(map[int64]map[chan struct{}]struct{}), users: make(map[int64]map[int64]int)}
+	return &liveHub{
+		viewers: make(map[int64]map[chan struct{}]struct{}),
+		users:   make(map[int64]map[int64]int),
+		total:   make(map[int64]int),
+	}
 }
 
-func (h *liveHub) join(room, user int64) chan struct{} {
+// 每人每房间最多三个连接，跨房间也有总上限。
+func (h *liveHub) join(room, user int64) (chan struct{}, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.users[room][user] >= maxRoomConnections || h.total[user] >= maxUserConnections {
+		return nil, false
+	}
 	if h.viewers[room] == nil {
 		h.viewers[room] = make(map[chan struct{}]struct{})
 		h.users[room] = make(map[int64]int)
@@ -30,7 +43,8 @@ func (h *liveHub) join(room, user int64) chan struct{} {
 	updates := make(chan struct{}, 1)
 	h.viewers[room][updates] = struct{}{}
 	h.users[room][user]++
-	return updates
+	h.total[user]++
+	return updates, true
 }
 
 func (h *liveHub) leave(room, user int64, updates chan struct{}) bool {
@@ -38,6 +52,10 @@ func (h *liveHub) leave(room, user int64, updates chan struct{}) bool {
 	defer h.mu.Unlock()
 	delete(h.viewers[room], updates)
 	h.users[room][user]--
+	h.total[user]--
+	if h.total[user] == 0 {
+		delete(h.total, user)
+	}
 	last := h.users[room][user] == 0
 	if last {
 		delete(h.users[room], user)
@@ -86,8 +104,17 @@ func (h *Handler) live(c *gin.Context) {
 		c.JSON(403, gin.H{"error": "你不在房间中"})
 		return
 	}
+	// 升级前预留名额，超限时才能返回普通 HTTP 状态码。
+	updates, allowed := h.liveHub.join(id, user.ID)
+	if !allowed {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "实时连接数过多，请关闭多余页面"})
+		return
+	}
 	conn, err := websocket.Accept(c.Writer, c.Request, nil)
 	if err != nil {
+		if h.liveHub.leave(id, user.ID, updates) {
+			h.pauseIfHost(id, user.ID)
+		}
 		return
 	}
 	defer conn.CloseNow()
@@ -95,7 +122,6 @@ func (h *Handler) live(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	closed := conn.CloseRead(ctx)
-	updates := h.liveHub.join(id, user.ID)
 	defer func() {
 		if h.liveHub.leave(id, user.ID, updates) {
 			h.pauseIfHost(id, user.ID)
