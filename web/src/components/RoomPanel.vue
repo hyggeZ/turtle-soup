@@ -26,6 +26,7 @@ let refreshTimer
 let clockTimer
 let active = false
 let loadVersion = 0
+let lastLoadedAt = 0
 
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
 const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
@@ -51,10 +52,12 @@ async function load() {
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
     room.value = next
+    lastLoadedAt = performance.now()
     error.value = ''
     if (!socket) connect()
   } catch (cause) {
     if (!active || props.id !== id || version !== loadVersion) return
+    lastLoadedAt = 0
     error.value = cause.message
     if ([401, 403, 404].includes(cause.status)) {
       room.value = null
@@ -177,6 +180,7 @@ function connect() {
 function resetRoom() {
   closeSocket()
   room.value = null
+  lastLoadedAt = 0
   clockOffset.value = 0
   everConnected.value = false
   error.value = ''
@@ -190,8 +194,10 @@ function resetRoom() {
 onMounted(() => {
   active = true
   resetRoom()
-  // 代理或网络不支持 WebSocket 时，仍定期校准状态。
-  refreshTimer = setInterval(load, 10000)
+  // 实时连接断开时每 10 秒补查；连接正常时每 60 秒校准一次。
+  refreshTimer = setInterval(() => {
+    if (!connected.value || performance.now() - lastLoadedAt >= 60000) load()
+  }, 10000)
   clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
 })
 onUnmounted(() => {
