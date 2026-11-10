@@ -27,6 +27,7 @@ let clockTimer
 let active = false
 let loadVersion = 0
 let lastLoadedAt = 0
+let expiredChecked = ''
 
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
 const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
@@ -38,7 +39,6 @@ const remaining = computed(() => {
 })
 const myTurn = computed(() => room.value?.mode === 'casual' || (room.value?.turnUserId === props.user?.id && remaining.value > 0))
 const replied = computed(() => new Set((room.value?.events || []).filter(item => item.parentId).map(item => item.parentId)))
-const pendingQuestion = computed(() => room.value?.events.some(item => item.kind === 'question' && !replied.value.has(item.id)))
 const pendingRestore = computed(() => room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
 const pendingAnswer = computed(() => room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
 
@@ -51,6 +51,7 @@ async function load() {
     if (!active || props.id !== id || version !== loadVersion) return
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
+    if (next.turnDeadline !== room.value?.turnDeadline) expiredChecked = ''
     room.value = next
     lastLoadedAt = performance.now()
     error.value = ''
@@ -195,6 +196,7 @@ function resetRoom() {
   error.value = ''
   notice.value = ''
   editing.value = false
+  expiredChecked = ''
   restoreAction()
   load()
   connect()
@@ -207,7 +209,13 @@ onMounted(() => {
   refreshTimer = setInterval(() => {
     if (!connected.value || performance.now() - lastLoadedAt >= 60000) load()
   }, 10000)
-  clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
+  clockTimer = setInterval(() => {
+    now.value = Date.now()
+    if (room.value?.status !== 'active' || room.value?.mode !== 'competitive' || !room.value.turnDeadline) return
+    if (remaining.value > 0 || expiredChecked === room.value.turnDeadline) return
+    expiredChecked = room.value.turnDeadline
+    load()
+  }, 1000)
 })
 onUnmounted(() => {
   active = false
@@ -285,7 +293,6 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
         <div v-if="room.mode === 'competitive'" class="room-turn">
           <strong>当前提问：{{ names[room.turnUserId] || '无' }}</strong>
           <span>{{ remaining > 0 ? `剩余 ${remaining} 秒` : '本回合已超时' }}</span>
-          <button v-if="room.myRole === 'host' && remaining === 0 && room.turnDeadline && !pendingQuestion" class="text-button" :disabled="locked" @click="act('skip_turn')">跳过超时回合</button>
         </div>
         <template v-if="room.myRole === 'player'">
           <p v-if="room.mode === 'competitive' && !myTurn" class="meta">等待你的提问回合。</p>
@@ -294,8 +301,8 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
             <button :disabled="locked || !myTurn || !question.trim()">发送问题</button>
           </form>
           <form class="room-action-form" @submit.prevent="submitRestore">
-            <label>还原真相<textarea v-model="restore" rows="3" maxlength="2000" :disabled="locked || !myTurn || pendingRestore" placeholder="把完整推理单独提交给主持人" /></label>
-            <button :disabled="locked || !myTurn || pendingRestore || !restore.trim()">提交还原</button>
+            <label>还原真相<textarea v-model="restore" rows="3" maxlength="2000" :disabled="locked || pendingRestore" placeholder="把完整推理单独提交给主持人" /></label>
+            <button :disabled="locked || pendingRestore || !restore.trim()">提交还原</button>
           </form>
           <p v-if="pendingRestore" class="meta">已提交还原，等待主持人判定。</p>
           <div class="room-controls">

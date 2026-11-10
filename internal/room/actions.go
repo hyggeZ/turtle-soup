@@ -111,9 +111,6 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		if status != "active" || role != "player" || len([]rune(in.Body)) < 1 || len([]rune(in.Body)) > 2000 {
 			return bad()
 		}
-		if mode == "competitive" && (turn == nil || *turn != user || deadline == nil || time.Now().After(*deadline)) {
-			return "", errors.New("当前不是你的回合")
-		}
 		var pending bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(
 			SELECT 1 FROM room_events e WHERE e.room_id=$1 AND e.user_id=$2 AND e.kind='restore'

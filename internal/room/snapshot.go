@@ -25,12 +25,27 @@ func (h *Handler) get(c *gin.Context) {
 	var deadline *time.Time
 	var winner *int64
 	// 汤底在成员身份查询中按权限返回，减少一次数据库往返。
-	e := h.db.QueryRow(c.Request.Context(), `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,r.soup_title,r.soup_surface,r.soup_genre,r.soup_difficulty,r.soup_horror,r.answer_published,m.role,
+	query := `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,r.soup_title,r.soup_surface,r.soup_genre,r.soup_difficulty,r.soup_horror,r.answer_published,m.role,
 		CASE WHEN m.role='host' OR m.seen_answer OR r.answer_published THEN COALESCE(r.soup_answer,'') ELSE '' END
-		FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &answer)
+		FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`
+	read := func() error {
+		return h.db.QueryRow(c.Request.Context(), query, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &answer)
+	}
+	e := read()
 	if e != nil {
 		fail(c, e)
 		return
+	}
+	if mode == "competitive" && status == "active" && deadline != nil && !time.Now().Before(*deadline) {
+		if e := h.advanceExpiredTurn(c.Request.Context(), id); e != nil {
+			fail(c, e)
+			return
+		}
+		// 提交后重读，避免把上一回合的状态返回给触发刷新的人。
+		if e := read(); e != nil {
+			fail(c, e)
+			return
+		}
 	}
 	members := make([]gin.H, 0)
 	rows, e := h.db.Query(c.Request.Context(), `SELECT m.user_id,u.username,m.role,m.correct,m.host_request FROM room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=$1 ORDER BY m.joined_at,m.user_id`, id)
