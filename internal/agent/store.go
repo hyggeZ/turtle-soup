@@ -18,6 +18,8 @@ var ErrLimit = errors.New("本局操作次数已达到上限")
 var ErrDailyLimit = errors.New("今日 AI 调用次数已达到上限")
 var ErrOperationMismatch = errors.New("操作 ID 已用于其他内容")
 
+const globalDailyLimit = 300
+
 type Store struct {
 	db *pgxpool.Pool
 }
@@ -184,7 +186,18 @@ func (s *Store) Claim(ctx context.Context, user, id int64, operationID, kind, bo
 			return reservation{}, Decision{}, false, ErrLimit
 		}
 		var calls int
-		err := tx.QueryRow(ctx, `INSERT INTO ai_daily_usage(user_id,usage_day,calls)
+		// 跨账号共用当天额度；冲突更新会锁住同一天的计数行。
+		err := tx.QueryRow(ctx, `INSERT INTO ai_global_usage(usage_day,calls)
+			VALUES(CURRENT_DATE,1)
+			ON CONFLICT (usage_day) DO UPDATE SET calls=ai_global_usage.calls+1
+			WHERE ai_global_usage.calls < $1 RETURNING calls`, globalDailyLimit).Scan(&calls)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return reservation{}, Decision{}, false, ErrDailyLimit
+		}
+		if err != nil {
+			return reservation{}, Decision{}, false, err
+		}
+		err = tx.QueryRow(ctx, `INSERT INTO ai_daily_usage(user_id,usage_day,calls)
 			VALUES($1,CURRENT_DATE,1)
 			ON CONFLICT (user_id,usage_day) DO UPDATE SET calls=ai_daily_usage.calls+1
 			WHERE ai_daily_usage.calls < 120 RETURNING calls`, user).Scan(&calls)

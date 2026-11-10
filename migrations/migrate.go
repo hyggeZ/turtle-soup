@@ -32,6 +32,9 @@ var commentsSQL string
 //go:embed 008_soup_manage.sql
 var soupManageSQL string
 
+//go:embed 009_ai_global_usage.sql
+var aiGlobalUsageSQL string
+
 // Apply 只执行尚未应用的脚本；锁避免多进程同时改表。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	tx, err := db.Begin(ctx)
@@ -49,7 +52,7 @@ func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL}
+	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL, aiGlobalUsageSQL}
 	for i, script := range scripts {
 		version := i + 1
 		var applied bool
