@@ -1,0 +1,25 @@
+[Unit]
+Description=Turtle Soup Go service
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=turtlesoup
+Group=turtlesoup
+WorkingDirectory=/srv/turtle-soup
+Environment="DATABASE_URL=host=/var/run/postgresql dbname=turtle_soup user=turtlesoup sslmode=disable"
+Environment=SERVER_ADDR=127.0.0.1:18080
+Environment=GIN_MODE=release
+Environment=LOG_DIR=/srv/turtle-soup/logs
+EnvironmentFile=-/etc/turtle-soup/ai.env
+ExecStart=/srv/turtle-soup/current/turtle-server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/turtle-soup/logs
+
+[Install]
+WantedBy=multi-user.target
