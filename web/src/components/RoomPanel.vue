@@ -155,6 +155,15 @@ function retire() {
   if (window.confirm('退出玩家席位后，本局只能旁观。确定退出吗？')) act('retire')
 }
 
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(room.value.code)
+    notice.value = '房间码已复制'
+  } catch {
+    error.value = '复制失败，请手动选中房间码'
+  }
+}
+
 function closeSocket() {
   const old = socket
   socket = null
@@ -228,8 +237,13 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
     <template v-if="room">
       <div class="room-summary">
         <h2>{{ room.title }}</h2>
+        <div class="room-code">
+          <span>房间码</span>
+          <code>{{ room.code }}</code>
+          <button class="text-button" @click="copyCode">复制房间码</button>
+        </div>
         <p class="meta">
-          房间码 {{ room.code }} · {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
+          {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
           {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : '已结束' }}
         </p>
         <p class="meta">{{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5 · 玩家 {{ playerCount }}/{{ room.maxPlayers }}</p>

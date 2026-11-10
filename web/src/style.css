@@ -35,6 +35,8 @@ button:disabled { opacity: .45; cursor: default; }
 .room-row p { margin: 6px 0 0; }
 .small-button, .event-actions button { border: 1px solid #bcbcbc; background: #fff; padding: 8px 12px; color: #222; }
 .room-summary { border-bottom: 1px solid #ddd; padding-bottom: 22px; }
+.room-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.room-code code { overflow-wrap: anywhere; font-size: 14px; }
 .room-summary .surface { font-size: 18px; }
 .members, .room-controls, .event-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .room-controls { margin: 24px 0; }
