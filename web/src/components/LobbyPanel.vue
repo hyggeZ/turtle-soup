@@ -1,27 +1,36 @@
 <script setup>
-// 大厅展示公开房间；房间码可以进入未公开的房间。
-import { onMounted, reactive, ref } from 'vue'
+// 大厅展示公开房间和我已加入的房间；房间码可以进入未公开的房间。
+import { reactive, ref, watch } from 'vue'
 import { request, send } from '../api'
 import SoupPicker from './SoupPicker.vue'
 
 const props = defineProps({ user: { type: Object, default: null }, initialSoupId: { type: Number, default: 0 }, initialCode: { type: String, default: '' } })
 const emit = defineEmits(['room', 'login'])
 const rooms = ref([])
+const mine = ref([])
 const code = ref(props.initialCode)
 const error = ref('')
 const loading = ref(false)
 const busy = ref(false)
 const form = reactive({ soupId: props.initialSoupId, mode: 'casual', maxPlayers: 6, public: true, hostSelf: true })
+let loadVersion = 0
 
 async function load() {
+  const version = ++loadVersion
+  const userId = props.user?.id
   loading.value = true
+  mine.value = []
   try {
-    rooms.value = await request('/api/rooms')
+    const publicRooms = await request('/api/rooms')
+    const ownRooms = userId ? await request('/api/rooms/mine') : []
+    if (version !== loadVersion || props.user?.id !== userId) return
+    rooms.value = publicRooms
+    mine.value = ownRooms
     error.value = ''
   } catch (cause) {
-    error.value = cause.message
+    if (version === loadVersion) error.value = cause.message
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -53,7 +62,7 @@ async function create() {
   }
 }
 
-onMounted(load)
+watch(() => props.user?.id, load, { immediate: true })
 </script>
 
 <template>
@@ -67,6 +76,23 @@ onMounted(load)
       <input v-model="code" maxlength="32" placeholder="输入房间码" aria-label="房间码" required />
       <button :disabled="busy || !code.trim()">加入房间</button>
     </form>
+
+    <section v-if="user" class="lobby-section">
+      <h2>我的房间</h2>
+      <p v-if="!mine.length && !loading" class="empty-state">暂无进行中的房间。</p>
+      <article v-for="room in mine" :key="room.id" class="room-row">
+        <div>
+          <strong>{{ room.title }}</strong>
+          <p class="meta">
+            {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
+            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : '进行中' }} ·
+            {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
+            玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
+          </p>
+        </div>
+        <button class="small-button" @click="emit('room', room.id)">进入</button>
+      </article>
+    </section>
 
     <section class="lobby-section">
       <h2>公开房间</h2>

@@ -27,6 +27,7 @@ func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
 }
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/rooms", h.list)
+	r.GET("/api/rooms/mine", h.listMine)
 	r.POST("/api/rooms", h.create)
 	r.POST("/api/rooms/join", h.join)
 	r.GET("/api/rooms/:id", h.get)
@@ -189,6 +190,46 @@ func (h *Handler) list(c *gin.Context) {
 	}
 	c.JSON(200, items)
 }
+
+// 我的房间只返回当前成员可继续进入的房间概要，不包含汤底、事件或房间码。
+func (h *Handler) listMine(c *gin.Context) {
+	u, ok := h.user(c)
+	if !ok {
+		return
+	}
+	rows, err := h.db.Query(c.Request.Context(), `SELECT r.id,r.mode,r.status,r.max_players,r.public,
+		r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,m.role,
+		(SELECT count(*) FROM room_members player WHERE player.room_id=r.id AND player.role='player')
+		FROM room_members m JOIN rooms r ON r.id=m.room_id
+		WHERE m.user_id=$1 AND r.status IN ('waiting','active','paused')
+		ORDER BY r.id DESC LIMIT 50`, u.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	defer rows.Close()
+	items := make([]gin.H, 0)
+	for rows.Next() {
+		var id int64
+		var mode, status, title, genre, role string
+		var max, difficulty, horror int
+		var players int64
+		var public bool
+		if err := rows.Scan(&id, &mode, &status, &max, &public, &title, &genre, &difficulty, &horror, &role, &players); err != nil {
+			fail(c, err)
+			return
+		}
+		items = append(items, gin.H{"id": id, "mode": mode, "status": status, "maxPlayers": max,
+			"public": public, "title": title, "genre": genre, "difficulty": difficulty,
+			"horror": horror, "myRole": role, "players": players})
+	}
+	if err := rows.Err(); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, items)
+}
+
 func (h *Handler) join(c *gin.Context) {
 	u, ok := h.user(c)
 	if !ok {
