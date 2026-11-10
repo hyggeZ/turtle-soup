@@ -1,16 +1,21 @@
 <script setup>
-// 详情页默认读取汤面，用户主动操作后才请求汤底。
-import { onMounted, ref, watch } from 'vue'
+// 详情页默认展示汤面；作者可直接查看汤底，其他用户需要主动申请。
+import { computed, onMounted, ref, watch } from 'vue'
 import { request, send } from '../api'
 const props = defineProps({ id: Number, user: Object })
-const emit = defineEmits(['back', 'profile', 'play', 'solo'])
+const emit = defineEmits(['back', 'profile', 'play', 'solo', 'edit', 'deleted'])
 const soup = ref(null)
+const isAuthor = computed(() => props.user && soup.value?.authorId === props.user.id)
 const comments = ref([])
 const answer = ref('')
 const comment = ref('')
 const spoiler = ref(false)
 const error = ref('')
+const deleting = ref(false)
 async function load() {
+  soup.value = null
+  comments.value = []
+  answer.value = ''
   try {
     soup.value = await request(`/api/soups/${props.id}`)
     comments.value = await request(`/api/soups/${props.id}/comments`)
@@ -24,11 +29,16 @@ async function toggle(kind, active) {
   } catch (cause) { error.value = cause.message }
 }
 async function showAnswer() {
+  if (isAuthor.value && typeof soup.value.answer === 'string') {
+    answer.value = soup.value.answer
+    return
+  }
   if (!window.confirm('查看汤底会产生剧透，之后不能以玩家身份参与这道题。确定查看吗？')) return
   try { answer.value = (await send(`/api/soups/${props.id}/answer`, 'POST')).answer }
   catch (cause) { error.value = cause.message }
 }
 async function showComment(item) {
+  if (!window.confirm('展开剧透评论后，不能再以玩家身份参与这道题。确定展开吗？')) return
   try {
     const result = await send(`/api/soups/${props.id}/comments/${item.id}/spoiler`, 'POST')
     item.body = result.body
@@ -45,6 +55,17 @@ async function addComment() {
     soup.value = await request(`/api/soups/${props.id}`)
   } catch (cause) { error.value = cause.message }
 }
+// 删除由服务端校验作者身份，并保留已有对局的题目快照。
+async function deleteSoup() {
+  if (deleting.value || !window.confirm('删除后题目不再公开，确定删除吗？')) return
+  deleting.value = true
+  error.value = ''
+  try {
+    await send(`/api/soups/${props.id}`, 'DELETE')
+    emit('deleted')
+  } catch (cause) { error.value = cause.message }
+  finally { deleting.value = false }
+}
 watch(() => props.id, load)
 onMounted(load)
 </script>
@@ -58,6 +79,10 @@ onMounted(load)
       <button v-if="user && !answer" @click="showAnswer">查看汤底</button>
       <button v-if="user" @click="emit('play', soup.id)">用此题建房</button>
       <button @click="emit('solo', soup.id)">单人试玩</button></div>
+    <div v-if="isAuthor" class="author-actions">
+      <button class="small-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>
+      <button class="small-button" :disabled="deleting" @click="deleteSoup">{{ deleting ? '正在删除…' : '删除题目' }}</button>
+    </div>
     <p v-if="!user" class="muted">登录后可互动或查看汤底。</p>
     <div v-if="answer" class="answer"><h3>汤底</h3><p>{{ answer }}</p></div>
     <h3>评论 {{ soup.comments }}</h3>

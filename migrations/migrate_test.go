@@ -50,4 +50,8 @@ func TestApplyFromEmptySchema(t *testing.T) {
 	if err != nil || users == "" || rooms == "" || games == "" {
 		t.Fatalf("核心数据表不完整: users=%q rooms=%q ai_games=%q err=%v", users, rooms, games, err)
 	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 8 {
+		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
+	}
 }

@@ -95,7 +95,7 @@ func (h *Handler) create(c *gin.Context) {
 	var title, surface, answer, genre string
 	var authorID int64
 	var difficulty, horror int
-	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 FOR UPDATE`, in.SoupID).Scan(&authorID, &title, &surface, &answer, &genre, &difficulty, &horror)
+	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, in.SoupID).Scan(&authorID, &title, &surface, &answer, &genre, &difficulty, &horror)
 	if errors.Is(e, pgx.ErrNoRows) {
 		c.JSON(404, gin.H{"error": "题目不存在"})
 		return

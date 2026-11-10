@@ -60,7 +60,7 @@ func (s *Store) Create(ctx context.Context, user, soupID int64) (int64, error) {
 	defer tx.Rollback(ctx)
 	var author int64
 	var soup Soup
-	err = tx.QueryRow(ctx, `SELECT author_id,title,surface,answer FROM soups WHERE id=$1 FOR UPDATE`, soupID).Scan(&author, &soup.Title, &soup.Surface, &soup.Answer)
+	err = tx.QueryRow(ctx, `SELECT author_id,title,surface,answer FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, soupID).Scan(&author, &soup.Title, &soup.Surface, &soup.Answer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrNotFound
 	}

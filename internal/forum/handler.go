@@ -25,6 +25,8 @@ func (h *Handler) Register(router *gin.Engine) {
 	router.GET("/api/soups", h.list)
 	router.GET("/api/soups/:id", h.get)
 	router.POST("/api/soups", h.create)
+	router.PATCH("/api/soups/:id", h.update)
+	router.DELETE("/api/soups/:id", h.delete)
 	router.POST("/api/soups/:id/answer", h.answer)
 	router.PUT("/api/soups/:id/like", h.like)
 	router.DELETE("/api/soups/:id/like", h.unlike)
@@ -71,6 +73,14 @@ func idParam(ctx *gin.Context) (int64, bool) {
 func replyError(ctx *gin.Context, err error) {
 	if errors.Is(err, ErrNotFound) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "内容不存在"})
+		return
+	}
+	if errors.Is(err, ErrForbidden) {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	if errors.Is(err, ErrActiveGame) {
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 	ctx.JSON(http.StatusInternalServerError, gin.H{"error": "服务器暂时无法处理请求"})
@@ -121,6 +131,18 @@ type soupInput struct {
 	Horror     int    `json:"horror"`
 }
 
+func (input *soupInput) valid() bool {
+	input.Title = strings.TrimSpace(input.Title)
+	input.Surface = strings.TrimSpace(input.Surface)
+	input.Answer = strings.TrimSpace(input.Answer)
+	input.Genre = strings.TrimSpace(input.Genre)
+	return len([]rune(input.Title)) >= 2 && len([]rune(input.Title)) <= 80 &&
+		len([]rune(input.Surface)) >= 5 && len([]rune(input.Surface)) <= 2000 &&
+		len([]rune(input.Answer)) >= 5 && len([]rune(input.Answer)) <= 5000 &&
+		(input.Genre == "本格" || input.Genre == "变格") &&
+		input.Difficulty >= 1 && input.Difficulty <= 5 && input.Horror >= 0 && input.Horror <= 5
+}
+
 func (h *Handler) create(ctx *gin.Context) {
 	user, ok := h.requiredUser(ctx)
 	if !ok {
@@ -132,14 +154,7 @@ func (h *Handler) create(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请填写完整题目"})
 		return
 	}
-	input.Title = strings.TrimSpace(input.Title)
-	input.Surface = strings.TrimSpace(input.Surface)
-	input.Answer = strings.TrimSpace(input.Answer)
-	if len([]rune(input.Title)) < 2 || len([]rune(input.Title)) > 80 ||
-		len([]rune(input.Surface)) < 5 || len([]rune(input.Surface)) > 2000 ||
-		len([]rune(input.Answer)) < 5 || len([]rune(input.Answer)) > 5000 ||
-		(input.Genre != "本格" && input.Genre != "变格") ||
-		input.Difficulty < 1 || input.Difficulty > 5 || input.Horror < 0 || input.Horror > 5 {
+	if !input.valid() {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请检查标题、汤面、汤底及分类评分"})
 		return
 	}
@@ -149,6 +164,46 @@ func (h *Handler) create(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+// 编辑题目需要提交完整内容，避免局部字段被无意清空。
+func (h *Handler) update(ctx *gin.Context) {
+	user, ok := h.requiredUser(ctx)
+	if !ok {
+		return
+	}
+	id, ok := idParam(ctx)
+	if !ok {
+		return
+	}
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 16<<10)
+	var input soupInput
+	if ctx.ShouldBindJSON(&input) != nil || !input.valid() {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请检查标题、汤面、汤底及分类评分"})
+		return
+	}
+	item, err := h.store.Update(ctx.Request.Context(), user, id, input.Title, input.Surface, input.Answer, input.Genre, input.Difficulty, input.Horror)
+	if err != nil {
+		replyError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) delete(ctx *gin.Context) {
+	user, ok := h.requiredUser(ctx)
+	if !ok {
+		return
+	}
+	id, ok := idParam(ctx)
+	if !ok {
+		return
+	}
+	if err := h.store.Delete(ctx.Request.Context(), user, id); err != nil {
+		replyError(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }
 
 func (h *Handler) answer(ctx *gin.Context) {

@@ -12,6 +12,8 @@ import (
 
 var ErrNotFound = errors.New("记录不存在")
 var ErrPlaying = errors.New("正在参与该题对局")
+var ErrForbidden = errors.New("只有题目作者可以管理该题")
+var ErrActiveGame = errors.New("这道题仍有进行中的对局，暂时不能编辑")
 
 type Soup struct {
 	ID         int64     `json:"id"`
@@ -19,6 +21,7 @@ type Soup struct {
 	Author     string    `json:"author"`
 	Title      string    `json:"title"`
 	Surface    string    `json:"surface"`
+	Answer     string    `json:"answer,omitempty"`
 	Genre      string    `json:"genre"`
 	Difficulty int       `json:"difficulty"`
 	Horror     int       `json:"horror"`
@@ -60,11 +63,17 @@ const soupFields = `s.id, s.author_id, u.username, s.title, s.surface, s.genre,
 	EXISTS(SELECT 1 FROM soup_likes WHERE soup_id = s.id AND user_id = $1),
 	EXISTS(SELECT 1 FROM soup_bookmarks WHERE soup_id = s.id AND user_id = $1)`
 
-func scanSoup(row pgx.Row) (Soup, error) {
+const soupDetailFields = soupFields + `,CASE WHEN s.author_id=$1 THEN s.answer ELSE '' END`
+
+func scanSoup(row pgx.Row, detail bool) (Soup, error) {
 	var soup Soup
-	err := row.Scan(&soup.ID, &soup.AuthorID, &soup.Author, &soup.Title, &soup.Surface,
+	fields := []any{&soup.ID, &soup.AuthorID, &soup.Author, &soup.Title, &soup.Surface,
 		&soup.Genre, &soup.Difficulty, &soup.Horror, &soup.CreatedAt,
-		&soup.Likes, &soup.Bookmarks, &soup.Comments, &soup.Liked, &soup.Bookmarked)
+		&soup.Likes, &soup.Bookmarks, &soup.Comments, &soup.Liked, &soup.Bookmarked}
+	if detail {
+		fields = append(fields, &soup.Answer)
+	}
+	err := row.Scan(fields...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Soup{}, ErrNotFound
 	}
@@ -73,7 +82,7 @@ func scanSoup(row pgx.Row) (Soup, error) {
 
 func (s *Store) List(ctx context.Context, viewer int64, author int64, limit, offset int) ([]Soup, error) {
 	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id = s.author_id
-		WHERE ($2 = 0 OR s.author_id = $2) ORDER BY s.created_at DESC, s.id DESC LIMIT $3 OFFSET $4`
+		WHERE s.deleted_at IS NULL AND ($2 = 0 OR s.author_id = $2) ORDER BY s.created_at DESC, s.id DESC LIMIT $3 OFFSET $4`
 	rows, err := s.db.Query(ctx, query, viewer, author, limit, offset)
 	if err != nil {
 		return nil, err
@@ -81,7 +90,7 @@ func (s *Store) List(ctx context.Context, viewer int64, author int64, limit, off
 	defer rows.Close()
 	items := make([]Soup, 0)
 	for rows.Next() {
-		item, err := scanSoup(rows)
+		item, err := scanSoup(rows, false)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +100,7 @@ func (s *Store) List(ctx context.Context, viewer int64, author int64, limit, off
 }
 
 func (s *Store) Get(ctx context.Context, viewer, id int64) (Soup, error) {
-	return scanSoup(s.db.QueryRow(ctx, `SELECT `+soupFields+` FROM soups s JOIN users u ON u.id=s.author_id WHERE s.id=$2`, viewer, id))
+	return scanSoup(s.db.QueryRow(ctx, `SELECT `+soupDetailFields+` FROM soups s JOIN users u ON u.id=s.author_id WHERE s.id=$2 AND s.deleted_at IS NULL`, viewer, id), true)
 }
 
 func (s *Store) Create(ctx context.Context, author int64, title, surface, answer, genre string, difficulty, horror int) (int64, error) {
@@ -99,6 +108,68 @@ func (s *Store) Create(ctx context.Context, author int64, title, surface, answer
 	err := s.db.QueryRow(ctx, `INSERT INTO soups(author_id,title,surface,answer,genre,difficulty,horror)
 		VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, author, title, surface, answer, genre, difficulty, horror).Scan(&id)
 	return id, err
+}
+
+// Update 锁定题目并检查作者；活跃对局期间不改题目正文。
+func (s *Store) Update(ctx context.Context, user, id int64, title, surface, answer, genre string, difficulty, horror int) (Soup, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Soup{}, err
+	}
+	defer tx.Rollback(ctx)
+	var author int64
+	err = tx.QueryRow(ctx, `SELECT author_id FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&author)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Soup{}, ErrNotFound
+	}
+	if err != nil {
+		return Soup{}, err
+	}
+	if author != user {
+		return Soup{}, ErrForbidden
+	}
+	var active bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rooms WHERE soup_id=$1 AND status IN ('waiting','active','paused'))
+		OR EXISTS(SELECT 1 FROM ai_games WHERE soup_id=$1 AND status='active')`, id).Scan(&active)
+	if err != nil {
+		return Soup{}, err
+	}
+	if active {
+		return Soup{}, ErrActiveGame
+	}
+	_, err = tx.Exec(ctx, `UPDATE soups SET title=$2,surface=$3,answer=$4,genre=$5,difficulty=$6,horror=$7,updated_at=NOW() WHERE id=$1`, id, title, surface, answer, genre, difficulty, horror)
+	if err != nil {
+		return Soup{}, err
+	}
+	item, err := scanSoup(tx.QueryRow(ctx, `SELECT `+soupDetailFields+` FROM soups s JOIN users u ON u.id=s.author_id WHERE s.id=$2`, user, id), true)
+	if err != nil {
+		return Soup{}, err
+	}
+	return item, tx.Commit(ctx)
+}
+
+// Delete 只标记删除，已创建的真人房间和 AI 单人局继续使用各自的题目快照。
+func (s *Store) Delete(ctx context.Context, user, id int64) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var author int64
+	err = tx.QueryRow(ctx, `SELECT author_id FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&author)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if author != user {
+		return ErrForbidden
+	}
+	if _, err := tx.Exec(ctx, `UPDATE soups SET deleted_at=NOW(),updated_at=NOW() WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // RevealAnswer 与加入房间共用题目行锁，避免“看汤底”和“入场”并发穿过检查。
@@ -110,7 +181,7 @@ func (s *Store) RevealAnswer(ctx context.Context, user, id int64) (string, error
 	defer tx.Rollback(ctx)
 
 	var answer string
-	err = tx.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1 FOR UPDATE`, id).Scan(&answer)
+	err = tx.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&answer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}

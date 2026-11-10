@@ -29,26 +29,42 @@ var agentSQL string
 //go:embed 007_comments.sql
 var commentsSQL string
 
-// Apply 按依赖顺序补建账号、社区和对局数据表。
+//go:embed 008_soup_manage.sql
+var soupManageSQL string
+
+// Apply 只执行尚未应用的脚本；锁避免多进程同时改表。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
-	if _, err := db.Exec(ctx, authSQL); err != nil {
+	tx, err := db.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, forumSQL); err != nil {
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(20261111)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, gameSQL); err != nil {
+	_, err = tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY,
+		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`)
+	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, rolesSQL); err != nil {
-		return err
+	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL}
+	for i, script := range scripts {
+		version := i + 1
+		var applied bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)`, version).Scan(&applied); err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		if _, err := tx.Exec(ctx, script); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
+			return err
+		}
 	}
-	if _, err := db.Exec(ctx, gameIntegritySQL); err != nil {
-		return err
-	}
-	if _, err := db.Exec(ctx, agentSQL); err != nil {
-		return err
-	}
-	_, err := db.Exec(ctx, commentsSQL)
-	return err
+	return tx.Commit(ctx)
 }
