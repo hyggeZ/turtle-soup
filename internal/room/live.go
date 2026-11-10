@@ -8,6 +8,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const maxRoomConnections = 3
@@ -82,6 +83,21 @@ func (h *liveHub) hasUser(room, user int64) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.users[room][user] > 0
+}
+
+// 正常停机时记录暂停时刻；主持人重连后按这段停机时间顺延竞答回合。
+func PauseActive(ctx context.Context, db *pgxpool.Pool, at time.Time) error {
+	_, err := db.Exec(ctx, `UPDATE rooms SET status='paused',paused_at=$1 WHERE status='active'`, at)
+	return err
+}
+
+// 异常退出没有停机时刻可用。启动时暂停遗留对局，并给竞答回合完整的 60 秒。
+func RecoverActive(ctx context.Context, db *pgxpool.Pool) error {
+	_, err := db.Exec(ctx, `UPDATE rooms SET status='paused',paused_at=NOW(),
+		turn_deadline=CASE WHEN mode='competitive' AND turn_deadline IS NOT NULL
+			THEN GREATEST(turn_deadline,NOW()+INTERVAL '60 seconds') ELSE turn_deadline END
+		WHERE status='active'`)
+	return err
 }
 
 // WebSocket 连接仅在登录且属于房间后建立，默认执行同源校验。

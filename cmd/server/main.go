@@ -3,10 +3,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +58,12 @@ func main() {
 	if err := migrations.Apply(context.Background(), db); err != nil {
 		log.Fatal("初始化数据表失败: ", err)
 	}
+	recoverCtx, stopRecover := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := room.RecoverActive(recoverCtx, db); err != nil {
+		stopRecover()
+		log.Fatal("恢复房间状态失败: ", err)
+	}
+	stopRecover()
 
 	router := newRouter(monitor)
 	// 默认只信任 TCP 对端地址；部署在反向代理后时显式列出代理 IP 或 CIDR。
@@ -73,13 +82,39 @@ func main() {
 	admin.NewHandler(db, auth, monitor).Register(router)
 	room.NewHandler(db, auth).Register(router)
 	agent.NewHandler(agent.NewStore(db), auth, agent.NewQwenFromEnv()).Register(router)
-	addr := os.Getenv("SERVER_ADDR")
-	if addr == "" {
-		addr = ":18080"
-	}
-	if err := router.Run(addr); err != nil {
+	server := &http.Server{Addr: listenAddress(), Handler: router, ReadHeaderTimeout: 5 * time.Second}
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	shutdownDone := make(chan struct{})
+	go func() {
+		<-signals
+		defer close(shutdownDone)
+		pausedAt := time.Now()
+		// 先停止接收新请求，再持久化停机信号时刻，避免倒计时吞掉停机时间。
+		shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Print("停止接收请求失败: ", err)
+			_ = server.Close()
+		}
+		stop()
+		pauseCtx, stopPause := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := room.PauseActive(pauseCtx, db, pausedAt); err != nil {
+			log.Print("暂停进行中的房间失败: ", err)
+		}
+		stopPause()
+	}()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	<-shutdownDone
+}
+
+func listenAddress() string {
+	if addr := strings.TrimSpace(os.Getenv("SERVER_ADDR")); addr != "" {
+		return addr
+	}
+	return "127.0.0.1:18080"
 }
 
 func newRouter(monitor *telemetry.Store) *gin.Engine {

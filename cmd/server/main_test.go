@@ -9,6 +9,17 @@ import (
 	"turtle-soup/internal/telemetry"
 )
 
+func TestListenAddress(t *testing.T) {
+	t.Setenv("SERVER_ADDR", "")
+	if got := listenAddress(); got != "127.0.0.1:18080" {
+		t.Fatalf("默认地址应只监听本机：%s", got)
+	}
+	t.Setenv("SERVER_ADDR", "0.0.0.0:19000")
+	if got := listenAddress(); got != "0.0.0.0:19000" {
+		t.Fatalf("显式地址未生效：%s", got)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	monitor, err := telemetry.NewStore(t.TempDir())
 	if err != nil {
