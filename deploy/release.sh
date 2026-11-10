@@ -13,6 +13,7 @@ source_dir="$HOME/.local/share/turtle-soup/uploads/$version"
 release_dir="$app_dir/releases/$version"
 test -f "$source_dir/turtle-server" && test ! -L "$source_dir/turtle-server"
 test -f "$source_dir/turtle-admin" && test ! -L "$source_dir/turtle-admin"
+test -f "$source_dir/turtle-ai-eval" && test ! -L "$source_dir/turtle-ai-eval"
 test -f "$source_dir/web.tar.gz"
 
 # 先以普通用户解包，再检查归档路径与符号链接。
@@ -32,6 +33,7 @@ previous=$(readlink -f "$app_dir/current" || true)
 sudo install -d -m 0755 "$release_dir/web"
 sudo install -m 0755 "$source_dir/turtle-server" "$release_dir/turtle-server"
 sudo install -m 0755 "$source_dir/turtle-admin" "$release_dir/turtle-admin"
+sudo install -m 0755 "$source_dir/turtle-ai-eval" "$release_dir/turtle-ai-eval"
 sudo cp -a "$source_dir/web/." "$release_dir/web/"
 sudo chown -R root:root "$release_dir"
 sudo ln -sfn "$release_dir" "$app_dir/current.next"

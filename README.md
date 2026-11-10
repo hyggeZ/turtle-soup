@@ -7,6 +7,7 @@
 ```text
 cmd/server/         Go 服务入口
 cmd/admin/          本地管理员设置命令
+cmd/ai-eval/        AI 判定评测命令
 internal/account/   注册、登录与会话
 internal/forum/     汤题、互动与用户资料
 internal/room/      房间与对局规则
