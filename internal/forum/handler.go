@@ -2,7 +2,9 @@
 package forum
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,6 +38,7 @@ func (h *Handler) Register(router *gin.Engine) {
 	router.POST("/api/soups/:id/comments", h.addComment)
 	router.POST("/api/soups/:id/comments/:commentId/spoiler", h.commentSpoiler)
 	router.GET("/api/users/:id", h.profile)
+	router.PATCH("/api/users/:id/profile", h.updateProfile)
 	router.PUT("/api/users/:id/follow", h.follow)
 	router.DELETE("/api/users/:id/follow", h.unfollow)
 }
@@ -345,6 +348,55 @@ func (h *Handler) profile(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, item)
+}
+
+// 本人只能编辑公开展示名和简介；额外字段一律拒绝。
+func (h *Handler) updateProfile(ctx *gin.Context) {
+	user, ok := h.requiredUser(ctx)
+	if !ok {
+		return
+	}
+	id, ok := idParam(ctx)
+	if !ok {
+		return
+	}
+	if id != user {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "只能修改自己的资料"})
+		return
+	}
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 2<<10)
+	var input struct {
+		DisplayName *string `json:"displayName"`
+		Bio         *string `json:"bio"`
+	}
+	decoder := json.NewDecoder(ctx.Request.Body)
+	decoder.DisallowUnknownFields()
+	var extra any
+	if decoder.Decode(&input) != nil || decoder.Decode(&extra) != io.EOF || input.DisplayName == nil && input.Bio == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请填写展示名或简介"})
+		return
+	}
+	if input.DisplayName != nil {
+		value := strings.TrimSpace(*input.DisplayName)
+		input.DisplayName = &value
+		if len([]rune(value)) > 40 || strings.ContainsRune(value, 0) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "展示名不能超过 40 字"})
+			return
+		}
+	}
+	if input.Bio != nil {
+		value := strings.TrimSpace(*input.Bio)
+		input.Bio = &value
+		if len([]rune(value)) > 300 || strings.ContainsRune(value, 0) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "简介不能超过 300 字"})
+			return
+		}
+	}
+	if err := h.store.UpdateProfile(ctx.Request.Context(), user, input.DisplayName, input.Bio); err != nil {
+		replyError(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }
 
 func (h *Handler) setFollow(ctx *gin.Context, add bool) {

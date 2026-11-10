@@ -134,7 +134,7 @@ onMounted(loadUser)
           <p v-if="notice" class="panel room-notice" role="status">{{ notice }}</p>
           <SoupDetail :id="selected" :user="user" @back="openHome" @profile="openProfile" @play="openLobbyForSoup" @solo="openSoloForSoup" @edit="openEditor" @deleted="deleted" />
         </div>
-        <ProfilePanel v-else-if="page === 'profile' && user" :id="selected" :user="user" @back="page = 'home'" @open="openSoup" />
+        <ProfilePanel v-else-if="page === 'profile'" :id="selected" :user="user" @back="page = 'home'" @open="openSoup" />
         <LobbyPanel v-else-if="page === 'lobby'" :user="user" :initial-soup-id="chosenSoup" :initial-code="pendingRoomCode" @room="openRoom" @login="loginForLobby" />
         <RoomPanel v-else-if="page === 'room'" :id="selected" :user="user" @back="openLobby" @hosting="hostingRoom = $event" />
         <SoloPanel v-else-if="page === 'solo'" :user="user" :initial-soup-id="chosenSoloSoup" @login="openLogin('solo')" />

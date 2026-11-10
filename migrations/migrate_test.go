@@ -51,7 +51,7 @@ func TestApplyFromEmptySchema(t *testing.T) {
 		t.Fatalf("核心数据表不完整: users=%q rooms=%q ai_games=%q err=%v", users, rooms, games, err)
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 9 {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 10 {
 		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
 	}
 }
@@ -112,11 +112,15 @@ func TestApplyFromVersionEight(t *testing.T) {
 	}
 	var count int
 	var table string
-	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage') FROM schema_migrations`).Scan(&count, &table); err != nil || count != 9 || table == "" {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage') FROM schema_migrations`).Scan(&count, &table); err != nil || count != 10 || table == "" {
 		t.Fatalf("升级结果错误：版本数=%d，新表=%q，错误=%v", count, table, err)
 	}
 	var calls int
 	if err := db.QueryRow(ctx, `SELECT calls FROM ai_global_usage WHERE usage_day=CURRENT_DATE`).Scan(&calls); err != nil || calls != 40 {
 		t.Fatalf("旧版当日用量回填错误：calls=%d，错误=%v", calls, err)
+	}
+	var displayName, bio string
+	if err := db.QueryRow(ctx, `SELECT display_name,bio FROM users WHERE username=$1`, schema+"_0").Scan(&displayName, &bio); err != nil || displayName != "" || bio != "" {
+		t.Fatalf("旧账号公开资料迁移错误：展示名=%q，简介=%q，错误=%v", displayName, bio, err)
 	}
 }

@@ -43,11 +43,13 @@ type Comment struct {
 }
 
 type Profile struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	Followers int    `json:"followers"`
-	Following int    `json:"following"`
-	Followed  bool   `json:"followed"`
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Bio         string `json:"bio"`
+	Followers   int    `json:"followers"`
+	Following   int    `json:"following"`
+	Followed    bool   `json:"followed"`
 }
 
 type Store struct{ db *pgxpool.Pool }
@@ -258,15 +260,28 @@ func (s *Store) SpoilerComment(ctx context.Context, soup, comment int64) (string
 
 func (s *Store) GetProfile(ctx context.Context, viewer, id int64) (Profile, error) {
 	var item Profile
-	err := s.db.QueryRow(ctx, `SELECT u.id,u.username,
+	err := s.db.QueryRow(ctx, `SELECT u.id,u.username,u.display_name,u.bio,
 		(SELECT COUNT(*) FROM follows WHERE followed_id=u.id),
 		(SELECT COUNT(*) FROM follows WHERE follower_id=u.id),
 		EXISTS(SELECT 1 FROM follows WHERE follower_id=$1 AND followed_id=u.id)
-		FROM users u WHERE u.id=$2`, viewer, id).Scan(&item.ID, &item.Username, &item.Followers, &item.Following, &item.Followed)
+		FROM users u WHERE u.id=$2`, viewer, id).Scan(&item.ID, &item.Username, &item.DisplayName, &item.Bio, &item.Followers, &item.Following, &item.Followed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Profile{}, ErrNotFound
 	}
 	return item, err
+}
+
+// UpdateProfile 只修改公开资料；账号、角色和登录凭据不经由此接口更新。
+func (s *Store) UpdateProfile(ctx context.Context, user int64, displayName, bio *string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE users SET display_name=COALESCE($2::text,display_name),
+		bio=COALESCE($3::text,bio) WHERE id=$1`, user, displayName, bio)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) SetFollow(ctx context.Context, viewer, id int64, add bool) error {
