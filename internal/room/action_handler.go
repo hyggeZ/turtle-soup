@@ -1,9 +1,14 @@
 package room
 
 import (
-	"github.com/gin-gonic/gin"
+	"bytes"
+	"crypto/sha256"
+	"encoding/json"
+	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type actionInput struct {
@@ -24,19 +29,23 @@ func (h *Handler) action(c *gin.Context) {
 	if !ok {
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<10)
 	var in actionInput
 	if c.ShouldBindJSON(&in) != nil || len(in.OperationID) < 8 || len(in.OperationID) > 100 {
 		c.JSON(400, gin.H{"error": "请求内容无效"})
 		return
 	}
 	in.Body = strings.TrimSpace(in.Body)
+	payload, _ := json.Marshal(in)
+	hash := sha256.Sum256(payload)
 	tx, e := h.db.Begin(c.Request.Context())
 	if e != nil {
 		fail(c, e)
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
-	var owner, host, soupID int64
+	var owner, soupID int64
+	var host *int64
 	var mode, status, role string
 	var turn *int64
 	var deadline *time.Time
@@ -51,23 +60,47 @@ func (h *Handler) action(c *gin.Context) {
 		c.JSON(403, gin.H{"error": "你不在房间中"})
 		return
 	}
-	tag, e := tx.Exec(c.Request.Context(), `INSERT INTO game_operations(room_id,user_id,operation_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, id, u.ID, in.OperationID)
+	tag, e := tx.Exec(c.Request.Context(), `INSERT INTO game_operations(room_id,user_id,operation_id,request_hash) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, id, u.ID, in.OperationID, hash[:])
 	if e != nil {
 		fail(c, e)
 		return
 	}
 	if tag.RowsAffected() == 0 {
-		c.JSON(200, gin.H{"ok": true, "duplicate": true})
+		var savedHash []byte
+		var message *string
+		e = tx.QueryRow(c.Request.Context(), `SELECT request_hash,message FROM game_operations WHERE room_id=$1 AND user_id=$2 AND operation_id=$3`, id, u.ID, in.OperationID).Scan(&savedHash, &message)
+		if e != nil {
+			fail(c, e)
+			return
+		}
+		if len(savedHash) != 0 && !bytes.Equal(savedHash, hash[:]) {
+			c.JSON(409, gin.H{"error": "同一操作 ID 不能用于不同内容"})
+			return
+		}
+		result := gin.H{"ok": true, "duplicate": true}
+		if message != nil {
+			result["message"] = *message
+		}
+		c.JSON(200, result)
 		return
 	}
-	message, err := perform(c.Request.Context(), tx, id, u.ID, owner, host, soupID, max, mode, status, role, turn, deadline, in)
+	hostID := int64(0)
+	if host != nil {
+		hostID = *host
+	}
+	message, err := perform(c.Request.Context(), tx, id, u.ID, owner, hostID, soupID, max, mode, status, role, turn, deadline, in)
 	if err != nil {
 		c.JSON(409, gin.H{"error": err.Error()})
+		return
+	}
+	if _, e = tx.Exec(c.Request.Context(), `UPDATE game_operations SET message=$4 WHERE room_id=$1 AND user_id=$2 AND operation_id=$3`, id, u.ID, in.OperationID, message); e != nil {
+		fail(c, e)
 		return
 	}
 	if e = tx.Commit(c.Request.Context()); e != nil {
 		fail(c, e)
 		return
 	}
+	h.liveHub.notify(id)
 	c.JSON(200, gin.H{"ok": true, "message": message})
 }

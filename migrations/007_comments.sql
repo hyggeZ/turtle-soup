@@ -1,0 +1,3 @@
+-- 历史评论先按剧透处理，避免未审核内容直接展示。
+ALTER TABLE comments ADD COLUMN IF NOT EXISTS spoiler BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE comments ALTER COLUMN spoiler SET DEFAULT FALSE;

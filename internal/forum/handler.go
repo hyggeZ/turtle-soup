@@ -25,13 +25,14 @@ func (h *Handler) Register(router *gin.Engine) {
 	router.GET("/api/soups", h.list)
 	router.GET("/api/soups/:id", h.get)
 	router.POST("/api/soups", h.create)
-	router.GET("/api/soups/:id/answer", h.answer)
+	router.POST("/api/soups/:id/answer", h.answer)
 	router.PUT("/api/soups/:id/like", h.like)
 	router.DELETE("/api/soups/:id/like", h.unlike)
 	router.PUT("/api/soups/:id/bookmark", h.bookmark)
 	router.DELETE("/api/soups/:id/bookmark", h.unbookmark)
 	router.GET("/api/soups/:id/comments", h.comments)
 	router.POST("/api/soups/:id/comments", h.addComment)
+	router.POST("/api/soups/:id/comments/:commentId/spoiler", h.commentSpoiler)
 	router.GET("/api/users/:id", h.profile)
 	router.PUT("/api/users/:id/follow", h.follow)
 	router.DELETE("/api/users/:id/follow", h.unfollow)
@@ -159,16 +160,11 @@ func (h *Handler) answer(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	playing, err := h.store.Playing(ctx.Request.Context(), user, id)
-	if err != nil {
-		replyError(ctx, err)
-		return
-	}
-	if playing {
+	answer, err := h.store.RevealAnswer(ctx.Request.Context(), user, id)
+	if errors.Is(err, ErrPlaying) {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "正在参与此题对局，不能查看汤底"})
 		return
 	}
-	answer, err := h.store.Answer(ctx.Request.Context(), id)
 	if err != nil {
 		replyError(ctx, err)
 		return
@@ -228,7 +224,8 @@ func (h *Handler) addComment(ctx *gin.Context) {
 	}
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 4<<10)
 	var input struct {
-		Body string `json:"body"`
+		Body    string `json:"body"`
+		Spoiler bool   `json:"spoiler"`
 	}
 	if ctx.ShouldBindJSON(&input) != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "评论内容不能为空"})
@@ -243,11 +240,43 @@ func (h *Handler) addComment(ctx *gin.Context) {
 		replyError(ctx, err)
 		return
 	}
-	if err := h.store.AddComment(ctx.Request.Context(), id, user, input.Body); err != nil {
+	if err := h.store.AddComment(ctx.Request.Context(), id, user, input.Body, input.Spoiler); err != nil {
 		replyError(ctx, err)
 		return
 	}
 	ctx.Status(http.StatusCreated)
+}
+
+// 主动展开剧透等同于查看汤底；正在玩这道题的玩家不能绕过限制。
+func (h *Handler) commentSpoiler(ctx *gin.Context) {
+	user, ok := h.requiredUser(ctx)
+	if !ok {
+		return
+	}
+	soup, ok := idParam(ctx)
+	if !ok {
+		return
+	}
+	comment, err := strconv.ParseInt(ctx.Param("commentId"), 10, 64)
+	if err != nil || comment < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "评论 ID 无效"})
+		return
+	}
+	body, err := h.store.SpoilerComment(ctx.Request.Context(), soup, comment)
+	if err != nil {
+		replyError(ctx, err)
+		return
+	}
+	_, err = h.store.RevealAnswer(ctx.Request.Context(), user, soup)
+	if errors.Is(err, ErrPlaying) {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "正在参与此题对局，不能查看剧透"})
+		return
+	}
+	if err != nil {
+		replyError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"body": body})
 }
 
 func (h *Handler) profile(ctx *gin.Context) {

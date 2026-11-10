@@ -1,0 +1,42 @@
+[
+  {
+    "id": "theater_q_yes",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "question", "input": "小林是剧院灯光师吗？", "expected": "是"
+  },
+  {
+    "id": "theater_q_no",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "question", "input": "房间变暗是因为停电吗？", "expected": "否"
+  },
+  {
+    "id": "theater_q_irrelevant",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "question", "input": "小林喜欢喝咖啡吗？", "expected": "无关"
+  },
+  {
+    "id": "theater_restore_correct",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "restore", "input": "他是剧院的灯光师，关灯表示演出开始，观众给表演鼓掌。", "expected": "正确"
+  },
+  {
+    "id": "theater_restore_partial",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "restore", "input": "小林关了灯。", "expected": "不完整"
+  },
+  {
+    "id": "theater_restore_wrong",
+    "soup": {"title": "关灯", "surface": "小林按下按钮，房间变暗，大家却鼓起掌。", "answer": "小林是剧院灯光师，按下按钮关灯后演出开始，观众为表演鼓掌。"},
+    "kind": "restore", "input": "大家因为突然停电而鼓掌。", "expected": "错误"
+  },
+  {
+    "id": "umbrella_q_yes",
+    "soup": {"title": "雨伞", "surface": "窗外下着大雨，小周收起伞，衣服却没有湿。", "answer": "小周一直在室内展示雨伞，窗外虽然下雨，她并没有走到雨里。"},
+    "kind": "question", "input": "小周当时在室内吗？", "expected": "是"
+  },
+  {
+    "id": "umbrella_restore_correct",
+    "soup": {"title": "雨伞", "surface": "窗外下着大雨，小周收起伞，衣服却没有湿。", "answer": "小周一直在室内展示雨伞，窗外虽然下雨，她并没有走到雨里。"},
+    "kind": "restore", "input": "她在室内展示伞，没有走到室外的雨里。", "expected": "正确"
+  }
+]

@@ -1,4 +1,4 @@
-// 服务入口连接数据库，并注册账号和论坛两个模块的接口。
+// 服务入口连接数据库，并注册各业务模块的接口。
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 
 	"turtle-soup/internal/account"
 	"turtle-soup/internal/admin"
+	"turtle-soup/internal/agent"
 	"turtle-soup/internal/forum"
 	"turtle-soup/internal/room"
 	"turtle-soup/internal/telemetry"
@@ -51,7 +52,7 @@ func main() {
 		log.Fatal("连接 PostgreSQL 失败: ", err)
 	}
 	if err := migrations.Apply(context.Background(), db); err != nil {
-		log.Fatal("初始化论坛数据表失败: ", err)
+		log.Fatal("初始化数据表失败: ", err)
 	}
 
 	router := newRouter(monitor)
@@ -60,14 +61,23 @@ func main() {
 	forum.NewHandler(forum.NewStore(db), auth).Register(router)
 	admin.NewHandler(db, auth, monitor).Register(router)
 	room.NewHandler(db, auth).Register(router)
-	if err := router.Run(":18080"); err != nil {
+	agent.NewHandler(agent.NewStore(db), auth, agent.NewQwenFromEnv()).Register(router)
+	addr := os.Getenv("SERVER_ADDR")
+	if addr == "" {
+		addr = ":18080"
+	}
+	if err := router.Run(addr); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func newRouter(monitor *telemetry.Store) *gin.Engine {
 	router := gin.New()
-	router.Use(monitor.Middleware(), gin.Recovery())
+	// 目前直接接收请求；不信任客户端伪造的代理 IP 头。
+	if err := router.SetTrustedProxies(nil); err != nil {
+		panic(err)
+	}
+	router.Use(monitor.Middleware(), account.SameOriginMiddleware(), gin.Recovery())
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

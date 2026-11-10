@@ -1,6 +1,6 @@
 # 多人海龟汤
 
-用 Go、Vue 和 PostgreSQL 构建的海龟汤社区。支持注册登录、发布与互动、创建房间、真人主持的共探和竞答玩法。
+用 Go、Vue 和 PostgreSQL 构建的海龟汤社区。支持题目发布与互动、真人主持的共探和竞答房间，以及 Qwen 主持的单人模式。主持回答问题时只能选择“是”“否”“无关”；玩家可提交私有还原，或申请查看汤底后转为旁观者。
 
 ## 文件树
 
@@ -10,6 +10,7 @@ cmd/admin/          本地管理员设置命令
 internal/account/   注册、登录与会话
 internal/forum/     汤题、互动与用户资料
 internal/room/      房间与对局规则
+internal/agent/     AI 主持与单人对局
 internal/admin/     账号管理接口
 internal/telemetry/ 请求追踪与结构化日志
 migrations/         PostgreSQL 建表 SQL
@@ -41,6 +42,8 @@ npm run dev
 ```
 
 游戏入口为 `http://127.0.0.1:5173/`，后台入口为 `http://127.0.0.1:5173/admin`。运行后端测试：`go test ./...`。
+
+单人模式需要在启动后端前设置 `DASHSCOPE_API_KEY`。可用 `QWEN_MODEL` 选择模型，或用 `QWEN_BASE_URL` 指定百炼华北2工作空间的兼容接口地址；未配置时其他功能仍可使用。
 
 已有本地数据库时，启动后端会自动补建业务表；首次启动数据库会创建账号表。用本地命令初始化或重设超级管理员 `king`：
 

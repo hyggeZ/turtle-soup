@@ -42,6 +42,55 @@ button:disabled { opacity: .45; cursor: default; }
 .event-row strong { min-width: 90px; }
 .event-row span { flex: 1; white-space: pre-wrap; }
 .event-actions { width: 100%; padding-left: 106px; }
+/* 房间大厅与对局页按状态分段，窄屏时操作仍保持完整。 */
+.lobby-section { margin-top: 38px; border-top: 1px solid #e5e5e5; padding-top: 24px; }
+.lobby-section h2 { margin-bottom: 18px; }
+.lobby-create-form { max-width: 620px; }
+.soup-picker { display: grid; justify-items: start; gap: 8px; }
+.soup-picker label { width: 100%; }
+.room-page { max-width: 900px; }
+.room-summary .meta { margin: 10px 0; }
+.room-members, .room-waiting, .room-play, .room-paused, .room-result, .room-events { margin-top: 28px; border-top: 1px solid #e5e5e5; }
+.room-members h3, .room-waiting h3, .room-play h3, .room-paused h3, .room-result h3, .room-events h3 { margin: 24px 0 16px; }
+.member-tag { padding: 8px 10px; background: #f4f4f4; color: #454545; font-size: 13px; }
+.room-settings { margin-top: 24px; padding: 20px; border: 1px solid #e2e2e2; }
+.room-settings .section-head { margin-bottom: 16px; }
+.room-settings h3 { margin: 0; }
+.room-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 24px 0; padding: 15px; background: #f5f5f5; }
+.room-turn span { color: #666; }
+.room-turn .text-button { margin-left: auto; }
+.room-action-form { max-width: 650px; margin: 24px 0; }
+.room-notice { color: #286348; }
+.room-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0; padding: 14px; background: #f5f5f5; color: #555; }
+.room-connection { color: #8a6329; }
+.room-paused { padding-bottom: 18px; }
+.room-result { padding-bottom: 18px; }
+.room-result p { margin: 0 0 16px; }
+.room-events .section-head { align-items: baseline; margin: 0; }
+.room-events .empty-state { padding: 18px 0; }
+.room-events .event-row { justify-content: flex-start; gap: 24px; }
+.event-meta { width: 125px; display: grid; gap: 4px; flex: none; }
+.event-meta strong { min-width: 0; }
+.event-meta time { color: #999; font-size: 12px; }
+.event-content { flex: 1; min-width: 0; display: grid; gap: 12px; white-space: pre-wrap; line-height: 1.6; }
+.event-content .event-actions { padding-left: 0; }
+/* 单人模式使用同一套题目与对局排版，模型等待有独立提示。 */
+.solo-page { max-width: 850px; }
+.solo-entry { display: grid; justify-items: start; gap: 18px; padding-top: 12px; }
+.solo-entry .soup-picker { width: min(100%, 650px); }
+.solo-entry p { margin: 0; }
+.solo-retry, .solo-working { margin: 24px 0; padding: 16px; background: #f5f5f5; }
+.solo-retry p { margin: 0 0 12px; }
+.solo-working { color: #555; }
+.solo-model { padding: 12px 0; border-top: 1px solid #e5e5e5; }
+.solo-finished { margin-top: 28px; border-top: 1px solid #e5e5e5; }
+.solo-finished > .small-button { margin-top: 20px; }
+.solo-history { margin-top: 36px; border-top: 1px solid #e5e5e5; }
+.solo-history h3 { margin: 24px 0 14px; }
+.solo-event { padding: 18px 0; border-bottom: 1px solid #e9e9e9; }
+.solo-event-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.solo-event-head time { color: #999; font-size: 12px; }
+.solo-event p { margin: 8px 0; }
 .simple-table { width: 100%; border-collapse: collapse; margin-top: 24px; }
 .simple-table th, .simple-table td { border-bottom: 1px solid #e6e6e6; padding: 12px; text-align: left; }
 .simple-table td .text-button { margin-right: 16px; }
@@ -179,6 +228,10 @@ form > button { justify-self: start; }
   .telemetry-route { grid-template-columns: 1fr; gap: 8px; }
 }
 @media (max-width: 560px) {
+  .room-events .event-row { display: block; }
+  .event-meta { width: auto; display: flex; gap: 12px; margin-bottom: 8px; }
+  .room-turn .text-button { margin-left: 0; }
+  .inline-form { flex-wrap: wrap; }
   .admin-layout { display: block; }
   .admin-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #e7e7e7; }
   .admin-brand { height: 60px; padding: 0 16px; font-size: 19px; }

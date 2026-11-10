@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -15,24 +16,31 @@ import (
 )
 
 type Handler struct {
-	db   *pgxpool.Pool
-	auth *account.Handler
+	db      *pgxpool.Pool
+	auth    *account.Handler
+	liveHub *liveHub
 }
 
 func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
-	return &Handler{db: db, auth: auth}
+	return &Handler{db: db, auth: auth, liveHub: newLiveHub()}
 }
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/rooms", h.list)
 	r.POST("/api/rooms", h.create)
 	r.POST("/api/rooms/join", h.join)
 	r.GET("/api/rooms/:id", h.get)
+	r.PATCH("/api/rooms/:id/settings", h.settings)
+	r.GET("/api/rooms/:id/ws", h.live)
 	r.POST("/api/rooms/:id/actions", h.action)
 }
 func (h *Handler) user(c *gin.Context) (account.User, bool) {
 	u, err := h.auth.CurrentUser(c)
 	if err != nil {
-		c.JSON(401, gin.H{"error": "请先登录"})
+		if errors.Is(err, account.ErrNotFound) {
+			c.JSON(401, gin.H{"error": "请先登录"})
+		} else {
+			c.JSON(500, gin.H{"error": "读取登录状态失败"})
+		}
 		return u, false
 	}
 	return u, true
@@ -58,6 +66,7 @@ type createInput struct {
 	Mode       string `json:"mode"`
 	MaxPlayers int    `json:"maxPlayers"`
 	Public     bool   `json:"public"`
+	HostSelf   *bool  `json:"hostSelf"`
 }
 
 func (h *Handler) create(c *gin.Context) {
@@ -66,13 +75,9 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	var in createInput
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<10)
 	if c.ShouldBindJSON(&in) != nil || in.SoupID < 1 || (in.Mode != "casual" && in.Mode != "competitive") || in.MaxPlayers < 2 || in.MaxPlayers > 20 {
 		c.JSON(400, gin.H{"error": "请检查房间设置"})
-		return
-	}
-	var exists bool
-	if e := h.db.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM soups WHERE id=$1)`, in.SoupID).Scan(&exists); e != nil || !exists {
-		c.JSON(404, gin.H{"error": "题目不存在"})
 		return
 	}
 	bytes := make([]byte, 4)
@@ -87,10 +92,65 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	var title, surface, answer, genre string
+	var authorID int64
+	var difficulty, horror int
+	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 FOR UPDATE`, in.SoupID).Scan(&authorID, &title, &surface, &answer, &genre, &difficulty, &horror)
+	if errors.Is(e, pgx.ErrNoRows) {
+		c.JSON(404, gin.H{"error": "题目不存在"})
+		return
+	}
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	var aiPlaying bool
+	e = tx.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM ai_games WHERE soup_id=$1 AND user_id=$2 AND status='active')`, in.SoupID, u.ID).Scan(&aiPlaying)
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	if aiPlaying {
+		c.JSON(409, gin.H{"error": "正在进行同题单人对局"})
+		return
+	}
+	hostSelf := in.HostSelf == nil || *in.HostSelf
+	if hostSelf {
+		playing, checkErr := playingElsewhere(c.Request.Context(), tx, in.SoupID, u.ID, 0)
+		if checkErr != nil {
+			fail(c, checkErr)
+			return
+		}
+		if playing {
+			c.JSON(http.StatusConflict, gin.H{"error": "仍在其他同题房间推理，不能主持"})
+			return
+		}
+	}
+	if !hostSelf {
+		var revealed bool
+		e = tx.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM soup_reveals WHERE soup_id=$1 AND user_id=$2)`, in.SoupID, u.ID).Scan(&revealed)
+		if e != nil {
+			fail(c, e)
+			return
+		}
+		if authorID == u.ID || revealed {
+			c.JSON(409, gin.H{"error": "已经知道汤底，不能作为本题玩家"})
+			return
+		}
+	}
+	var hostID *int64
+	role := "player"
+	if hostSelf {
+		hostID = &u.ID
+		role = "host"
+	}
 	var id int64
-	e = tx.QueryRow(c.Request.Context(), `INSERT INTO rooms(code,owner_id,host_id,soup_id,mode,max_players,public) VALUES($1,$2,$2,$3,$4,$5,$6) RETURNING id`, code, u.ID, in.SoupID, in.Mode, in.MaxPlayers, in.Public).Scan(&id)
+	e = tx.QueryRow(c.Request.Context(), `INSERT INTO rooms(code,owner_id,host_id,soup_id,mode,max_players,public,soup_title,soup_surface,soup_answer,soup_genre,soup_difficulty,soup_horror) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, code, u.ID, hostID, in.SoupID, in.Mode, in.MaxPlayers, in.Public, title, surface, answer, genre, difficulty, horror).Scan(&id)
 	if e == nil {
-		_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,'host',TRUE)`, id, u.ID)
+		_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,$3,$4)`, id, u.ID, role, hostSelf)
+	}
+	if e == nil && hostSelf {
+		_, e = tx.Exec(c.Request.Context(), `INSERT INTO soup_reveals(soup_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, in.SoupID, u.ID)
 	}
 	if e != nil {
 		fail(c, e)
@@ -103,7 +163,7 @@ func (h *Handler) create(c *gin.Context) {
 	c.JSON(201, gin.H{"id": id, "code": code})
 }
 func (h *Handler) list(c *gin.Context) {
-	rows, e := h.db.Query(c.Request.Context(), `SELECT r.id,r.code,r.mode,r.max_players,r.status,s.title,s.genre,s.difficulty,s.horror,(SELECT count(*) FROM room_members m WHERE m.room_id=r.id AND m.role='player') FROM rooms r JOIN soups s ON s.id=r.soup_id WHERE r.public=TRUE AND r.status IN ('waiting','active') ORDER BY r.id DESC LIMIT 50`)
+	rows, e := h.db.Query(c.Request.Context(), `SELECT r.id,r.code,r.mode,r.max_players,r.status,r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,(SELECT count(*) FROM room_members m WHERE m.room_id=r.id AND m.role='player') FROM rooms r WHERE r.public=TRUE AND r.status IN ('waiting','active') ORDER BY r.id DESC LIMIT 50`)
 	if e != nil {
 		fail(c, e)
 		return
@@ -135,6 +195,7 @@ func (h *Handler) join(c *gin.Context) {
 	var in struct {
 		Code string `json:"code"`
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<10)
 	if c.ShouldBindJSON(&in) != nil {
 		c.JSON(400, gin.H{"error": "请输入房间码"})
 		return
@@ -164,27 +225,41 @@ func (h *Handler) join(c *gin.Context) {
 		return
 	}
 	var authorID int64
-	e = tx.QueryRow(c.Request.Context(), `SELECT author_id FROM soups WHERE id=$1`, soupID).Scan(&authorID)
+	e = tx.QueryRow(c.Request.Context(), `SELECT author_id FROM soups WHERE id=$1 FOR UPDATE`, soupID).Scan(&authorID)
 	if e != nil {
 		fail(c, e)
 		return
 	}
 	role := "player"
-	if status == "active" && mode == "competitive" {
+	if (status == "active" || status == "paused") && mode == "competitive" {
 		role = "spectator"
 	}
-	if authorID == u.ID {
+	var revealed, aiPlaying bool
+	e = tx.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM soup_reveals WHERE soup_id=$1 AND user_id=$2),
+		EXISTS(SELECT 1 FROM ai_games WHERE soup_id=$1 AND user_id=$2 AND status='active')`, soupID, u.ID).Scan(&revealed, &aiPlaying)
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	if aiPlaying {
+		c.JSON(409, gin.H{"error": "正在进行同题单人对局"})
+		return
+	}
+	if authorID == u.ID || revealed {
 		role = "spectator"
 	}
 	if role == "player" {
 		var count int
-		_ = tx.QueryRow(c.Request.Context(), `SELECT count(*) FROM room_members WHERE room_id=$1 AND role='player'`, id).Scan(&count)
-		if count >= max {
-			c.JSON(409, gin.H{"error": "房间已满"})
+		e = tx.QueryRow(c.Request.Context(), `SELECT count(*) FROM room_members WHERE room_id=$1 AND role='player'`, id).Scan(&count)
+		if e != nil {
+			fail(c, e)
 			return
 		}
+		if count >= max {
+			role = "spectator"
+		}
 	}
-	_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,$3,$4)`, id, u.ID, role, authorID == u.ID)
+	_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,$3,$4)`, id, u.ID, role, authorID == u.ID || revealed)
 	if e != nil {
 		fail(c, e)
 		return
@@ -193,5 +268,6 @@ func (h *Handler) join(c *gin.Context) {
 		fail(c, e)
 		return
 	}
+	h.liveHub.notify(id)
 	c.JSON(200, gin.H{"id": id})
 }

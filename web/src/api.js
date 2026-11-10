@@ -3,7 +3,11 @@ export async function request(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options })
   if (response.status === 204 || (response.status === 201 && path.endsWith('/comments'))) return null
   const data = await response.json()
-  if (!response.ok) throw new Error(data.error || '请求失败')
+  if (!response.ok) {
+    const error = new Error(data.error || '请求失败')
+    error.status = response.status
+    throw error
+  }
   return data
 }
 

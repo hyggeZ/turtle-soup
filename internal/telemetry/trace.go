@@ -227,6 +227,9 @@ type Snapshot struct {
 	LogBytes    int64        `json:"logBytes"`
 	MaxLogBytes int64        `json:"maxLogBytes"`
 	WriteError  string       `json:"writeError,omitempty"`
+	RecentCount int          `json:"recentCount"`
+	ErrorCount  int          `json:"errorCount"`
+	Connections int          `json:"connections"`
 	Routes      []RouteStats `json:"routes"`
 	Recent      []Record     `json:"recent"`
 }
@@ -236,6 +239,7 @@ func (s *Store) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := Snapshot{MaxLogBytes: 2 * maxFileBytes, WriteError: s.writeError, Routes: []RouteStats{}, Recent: []Record{}}
+	result.RecentCount = len(s.records)
 	for _, name := range []string{"requests.jsonl", "requests.previous.jsonl"} {
 		if info, err := os.Stat(filepath.Join(s.dir, name)); err == nil {
 			result.LogBytes += info.Size()
@@ -245,12 +249,19 @@ func (s *Store) Snapshot() Snapshot {
 	errors := map[string]int{}
 	for i := len(s.records) - 1; i >= 0; i-- {
 		record := s.records[i]
-		groups[record.Route] = append(groups[record.Route], record.DurationMS)
 		if record.Status >= 400 {
-			errors[record.Route]++
+			result.ErrorCount++
 		}
 		if len(result.Recent) < 50 {
 			result.Recent = append(result.Recent, record)
+		}
+		if record.Status == 101 {
+			result.Connections++
+			continue
+		}
+		groups[record.Route] = append(groups[record.Route], record.DurationMS)
+		if record.Status >= 400 {
+			errors[record.Route]++
 		}
 	}
 	for route, times := range groups {

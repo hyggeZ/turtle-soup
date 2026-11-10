@@ -32,6 +32,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	r.POST("/api/admin/users", h.create)
 	r.PATCH("/api/admin/users/:id", h.update)
 	r.GET("/api/admin/telemetry", h.telemetry)
+	r.GET("/api/admin/ai-metrics", h.aiMetrics)
 }
 
 // 日志统计只对后台账号开放，返回路由与耗时，不暴露请求体。
@@ -62,6 +63,10 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
+	if len([]rune(q)) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索内容不能超过 50 字"})
+		return
+	}
 	rows, err := h.db.Query(c.Request.Context(), `
 		SELECT id,username,role,disabled,created_at FROM users
 		WHERE username ILIKE '%' || $1 || '%'
@@ -102,6 +107,7 @@ func (h *Handler) create(c *gin.Context) {
 	if !ok {
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4<<10)
 	var in createInput
 	if c.ShouldBindJSON(&in) != nil {
 		c.JSON(400, gin.H{"error": "请求内容无效"})
@@ -155,6 +161,7 @@ func (h *Handler) update(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "不能修改自己的后台账号"})
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4<<10)
 	var in updateInput
 	if c.ShouldBindJSON(&in) != nil || (in.Disabled == nil && in.Password == "") {
 		c.JSON(400, gin.H{"error": "请填写账号状态或新密码"})

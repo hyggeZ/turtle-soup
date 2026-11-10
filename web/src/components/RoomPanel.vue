@@ -1,115 +1,301 @@
 <script setup>
-// 房间每两秒读取一次状态；所有动作都由后端校验权限和顺序。
+// 房间操作走 HTTP；WebSocket 只提示重新读取按身份过滤的房间快照。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { request, send } from '../api'
+import { request } from '../api'
+import RoomEvents from './RoomEvents.vue'
+import RoomSettings from './RoomSettings.vue'
+
 const props = defineProps({ id: Number, user: { type: Object, default: null } })
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'hosting'])
 const room = ref(null)
 const error = ref('')
+const notice = ref('')
 const question = ref('')
 const restore = ref('')
-let timer
+const busy = ref(false)
+const pendingAction = ref(null)
+const connected = ref(false)
+const everConnected = ref(false)
+const editing = ref(false)
+const now = ref(Date.now())
+const clockOffset = ref(0)
+
+let socket
+let reconnectTimer
+let refreshTimer
+let clockTimer
+let active = false
+let loadVersion = 0
+
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
+const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
+const locked = computed(() => busy.value || !!pendingAction.value)
+const me = computed(() => room.value?.members.find(item => item.id === props.user?.id))
+const remaining = computed(() => {
+  if (!room.value?.turnDeadline) return 0
+  return Math.max(0, Math.ceil((new Date(room.value.turnDeadline).getTime() - now.value - clockOffset.value) / 1000))
+})
+const myTurn = computed(() => room.value?.mode === 'casual' || (room.value?.turnUserId === props.user?.id && remaining.value > 0))
 const replied = computed(() => new Set((room.value?.events || []).filter(item => item.parentId).map(item => item.parentId)))
-const myTurn = computed(() => room.value?.mode === 'casual' || room.value?.turnUserId === props.user?.id)
+const pendingQuestion = computed(() => room.value?.events.some(item => item.kind === 'question' && !replied.value.has(item.id)))
+const pendingRestore = computed(() => room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
+const pendingAnswer = computed(() => room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
+
 async function load() {
+  const id = props.id
+  const version = ++loadVersion
+  const sentAt = Date.now()
   try {
-    room.value = await request(`/api/rooms/${props.id}`)
+    const next = await request(`/api/rooms/${id}`)
+    if (!active || props.id !== id || version !== loadVersion) return
+    const serverTime = Date.parse(next.serverTime)
+    if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
+    room.value = next
     error.value = ''
+    if (!socket) connect()
   } catch (cause) {
+    if (!active || props.id !== id || version !== loadVersion) return
     error.value = cause.message
+    if ([401, 403, 404].includes(cause.status)) {
+      room.value = null
+      closeSocket()
+    }
   }
 }
-async function act(type, values = {}) {
+
+function actionKey(roomId, userId) {
+  return `turtle_room_action_${userId}_${roomId}`
+}
+
+function saveAction(action) {
+  pendingAction.value = action
+  sessionStorage.setItem(actionKey(action.roomId, action.userId), JSON.stringify(action))
+}
+
+function clearAction(action) {
+  sessionStorage.removeItem(actionKey(action.roomId, action.userId))
+  if (pendingAction.value?.operationId === action.operationId) pendingAction.value = null
+}
+
+function restoreAction() {
+  pendingAction.value = null
+  if (!props.user) return
+  const key = actionKey(props.id, props.user.id)
   try {
-    await send(`/api/rooms/${props.id}/actions`, 'POST', { type, operationId: crypto.randomUUID(), ...values })
-    await load()
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null')
+    if (saved?.roomId === props.id && saved.userId === props.user.id && saved.operationId && saved.type) {
+      pendingAction.value = saved
+    }
+  } catch {
+    sessionStorage.removeItem(key)
+  }
+}
+
+async function runAction(action) {
+  if (busy.value) return false
+  busy.value = true
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const result = await request(`/api/rooms/${action.roomId}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: action.type, operationId: action.operationId, ...action.values }),
+      signal: controller.signal,
+    })
+    clearAction(action)
+    if (active && props.id === action.roomId) {
+      notice.value = result.message || '操作已完成'
+      error.value = ''
+      if (action.type === 'question' && question.value.trim() === action.values.body) question.value = ''
+      if (action.type === 'restore' && restore.value.trim() === action.values.body) restore.value = ''
+      await load()
+    }
     return true
   } catch (cause) {
-    error.value = cause.message
+    // 已收到明确的业务拒绝时可重新编辑；网络超时则沿用原操作 ID。
+    if (cause.status >= 400 && cause.status < 500 && cause.status !== 408 && cause.status !== 429) clearAction(action)
+    if (active && props.id === action.roomId) {
+      await load()
+      error.value = cause.name === 'AbortError' ? '请求超时，请重试上次操作。' : cause.message || '操作失败'
+      notice.value = ''
+    }
     return false
+  } finally {
+    clearTimeout(timeout)
+    busy.value = false
   }
 }
+
+function act(type, values = {}) {
+  if (busy.value || pendingAction.value || !props.user) return Promise.resolve(false)
+  const action = { roomId: props.id, userId: props.user.id, type, values, operationId: crypto.randomUUID() }
+  saveAction(action)
+  return runAction(action)
+}
+
+function retryAction() {
+  if (pendingAction.value) runAction(pendingAction.value)
+}
+
 async function ask() {
   if (!question.value.trim()) return
-  if (await act('question', { body: question.value })) question.value = ''
+  await act('question', { body: question.value.trim() })
 }
+
 async function submitRestore() {
   if (!restore.value.trim()) return
-  if (await act('restore', { body: restore.value })) restore.value = ''
+  await act('restore', { body: restore.value.trim() })
 }
-function eventText(event) {
-  if (event.kind === 'question') return event.body
-  if (event.kind === 'answer') return `主持回答：${event.result}`
-  if (event.kind === 'restore') return event.body || '提交了还原'
-  if (event.kind === 'restore_result') return `还原判定：${event.result}`
-  if (event.kind === 'answer_request') return '申请查看汤底'
-  return `查看汤底：${event.result}`
+
+function retire() {
+  if (window.confirm('退出玩家席位后，本局只能旁观。确定退出吗？')) act('retire')
 }
-onMounted(() => {
+
+function closeSocket() {
+  const old = socket
+  socket = null
+  connected.value = false
+  clearTimeout(reconnectTimer)
+  old?.close()
+}
+
+function connect() {
+  if (!active || !props.id) return
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const connection = new WebSocket(`${protocol}//${window.location.host}/api/rooms/${props.id}/ws`)
+  socket = connection
+  connection.onopen = () => { connected.value = true; everConnected.value = true; load() }
+  connection.onmessage = load
+  connection.onclose = () => {
+    if (!active || socket !== connection) return
+    connected.value = false
+    reconnectTimer = setTimeout(connect, 2000)
+  }
+}
+
+function resetRoom() {
+  closeSocket()
+  room.value = null
+  clockOffset.value = 0
+  everConnected.value = false
+  error.value = ''
+  notice.value = ''
+  editing.value = false
+  restoreAction()
   load()
-  timer = setInterval(load, 2000)
+  connect()
+}
+
+onMounted(() => {
+  active = true
+  resetRoom()
+  // 代理或网络不支持 WebSocket 时，仍定期校准状态。
+  refreshTimer = setInterval(load, 10000)
+  clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
 })
-onUnmounted(() => clearInterval(timer))
-watch(() => props.id, load)
+onUnmounted(() => {
+  active = false
+  emit('hosting', false)
+  closeSocket()
+  clearInterval(refreshTimer)
+  clearInterval(clockTimer)
+})
+watch(() => props.id, resetRoom)
+watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', value => emit('hosting', !!value), { immediate: true })
 </script>
+
 <template>
-  <section class="panel">
+  <section class="panel room-page">
     <div class="section-head">
       <h1>房间</h1>
       <button class="text-button" @click="emit('back')">返回大厅</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="notice" class="room-notice" role="status">{{ notice }}</p>
+    <div v-if="pendingAction && !busy" class="room-retry">
+      <span>上次操作结果尚未确认，重试会沿用同一操作 ID。</span>
+      <button class="small-button" @click="retryAction">重试上次操作</button>
+    </div>
+    <p v-if="room && !connected" class="room-connection">{{ everConnected ? '实时连接中断，正在重连；页面仍会定期更新。' : '正在建立实时连接，页面仍会定期更新。' }}</p>
+
     <template v-if="room">
       <div class="room-summary">
         <h2>{{ room.title }}</h2>
-        <p class="meta">房间码 {{ room.code }} · {{ room.mode === 'casual' ? '共探' : '竞答' }} · {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : '已结束' }}</p>
+        <p class="meta">
+          房间码 {{ room.code }} · {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
+          {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : '已结束' }}
+        </p>
+        <p class="meta">{{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5 · 玩家 {{ playerCount }}/{{ room.maxPlayers }}</p>
         <p class="surface">{{ room.surface }}</p>
       </div>
-      <h3>成员</h3>
-      <div class="members">
-        <span v-for="member in room.members" :key="member.id">{{ member.username }}（{{ member.role === 'host' ? '主持' : member.role === 'player' ? '玩家' : '旁观' }}{{ member.correct ? '，已答对' : '' }}）</span>
-      </div>
-      <div v-if="room.status === 'waiting'" class="room-controls">
-        <button v-if="room.myRole !== 'host' && !room.members.find(item => item.id === user?.id)?.hostRequest" class="small-button" @click="act('host_request')">申请主持</button>
-        <template v-if="room.ownerId === user?.id">
-          <button v-for="member in room.members.filter(item => item.hostRequest)" :key="member.id" class="small-button" @click="act('host_approve', { userId: member.id })">同意 {{ member.username }} 主持</button>
-          <button class="primary-button" @click="act('start')">开始游戏</button>
-        </template>
-        <button v-else-if="room.myRole === 'host'" class="primary-button" @click="act('start')">开始游戏</button>
-      </div>
-      <template v-if="room.status === 'active'">
-        <p v-if="room.mode === 'competitive'" class="meta">当前提问：{{ names[room.turnUserId] || '无' }} · 截止 {{ room.turnDeadline ? new Date(room.turnDeadline).toLocaleTimeString('zh-CN') : '' }} <button v-if="Date.now() > new Date(room.turnDeadline).getTime()" class="text-button" @click="act('skip_turn')">跳过超时回合</button></p>
-        <form v-if="room.myRole === 'player'" @submit.prevent="ask">
-          <label>提问<input v-model="question" maxlength="500" :disabled="!myTurn" placeholder="向主持人提问" /></label>
-          <button :disabled="!myTurn">发送问题</button>
-        </form>
-        <form v-if="room.myRole === 'player'" @submit.prevent="submitRestore">
-          <label>还原真相<textarea v-model="restore" rows="3" maxlength="2000" /></label>
-          <button>提交还原</button>
-        </form>
-        <button v-if="room.myRole === 'player'" class="small-button" @click="act('answer_request')">申请查看汤底</button>
-        <button v-if="room.myRole === 'host' && room.mode === 'casual'" class="small-button" @click="act('finish')">结束游戏</button>
-      </template>
-      <div v-if="room.answer" class="answer">
-        <h3>汤底</h3><p>{{ room.answer }}</p>
-      </div>
-      <h3>对局记录</h3>
-      <p v-if="!room.events.length" class="empty-state">还没有操作记录。</p>
-      <article v-for="event in room.events" :key="event.id" class="event-row">
-        <strong>{{ names[event.userId] }}</strong><span>{{ eventText(event) }}</span>
-        <div v-if="room.myRole === 'host' && room.status === 'active' && !replied.has(event.id)" class="event-actions">
-          <template v-if="event.kind === 'question'">
-            <button v-for="result in ['是','否','无关']" :key="result" @click="act('answer', { eventId: event.id, result })">{{ result }}</button>
-          </template>
-          <template v-if="event.kind === 'restore'">
-            <button v-for="result in ['正确','错误','不完整']" :key="result" @click="act('judge', { eventId: event.id, result })">{{ result }}</button>
-          </template>
-          <template v-if="event.kind === 'answer_request'">
-            <button v-for="result in ['同意','拒绝']" :key="result" @click="act('answer_decide', { eventId: event.id, result })">{{ result }}</button>
-          </template>
+
+      <section class="room-members">
+        <h3>成员</h3>
+        <div class="members">
+          <span v-for="member in room.members" :key="member.id" class="member-tag">
+            {{ member.username }} · {{ member.role === 'host' ? '主持' : member.role === 'player' ? '玩家' : '旁观' }}{{ member.correct ? ' · 已答对' : '' }}
+          </span>
         </div>
-      </article>
+      </section>
+
+      <section v-if="room.status === 'waiting'" class="room-waiting">
+        <h3>等待开局</h3>
+        <p v-if="!room.hostId" class="meta">还没有主持人，房主确认申请后即可开局。</p>
+        <p v-else-if="!playerCount" class="meta">至少一名玩家加入后可以开局。</p>
+        <p v-else class="meta">主持人和玩家已就位，可以开始。</p>
+        <div class="room-controls">
+          <button v-if="room.myRole !== 'host' && room.ownerId !== user?.id && !me?.hostRequest" class="small-button" :disabled="locked" @click="act('host_request')">申请主持</button>
+          <span v-if="me?.hostRequest" class="meta">已申请主持，等待房主确认</span>
+          <template v-if="room.ownerId === user?.id">
+            <button v-for="member in room.members.filter(item => item.hostRequest && item.id !== room.ownerId)" :key="member.id" class="small-button" :disabled="locked" @click="act('host_approve', { userId: member.id })">同意 {{ member.username }} 主持</button>
+            <button class="small-button" :disabled="locked" @click="editing = !editing">{{ editing ? '收起设置' : '修改设置' }}</button>
+          </template>
+          <button v-if="(room.ownerId === user?.id || room.myRole === 'host') && room.hostId && playerCount" class="primary-button" :disabled="locked" @click="act('start')">开始游戏</button>
+        </div>
+        <RoomSettings v-if="editing && room.ownerId === user?.id" :room="room" @saved="editing = false; load()" @close="editing = false" />
+      </section>
+
+      <section v-if="room.status === 'paused'" class="room-paused">
+        <h3>对局已暂停</h3>
+        <p>主持人重连后继续，提问和判定暂时不可用。</p>
+      </section>
+
+      <section v-if="room.status === 'active'" class="room-play">
+        <div v-if="room.mode === 'competitive'" class="room-turn">
+          <strong>当前提问：{{ names[room.turnUserId] || '无' }}</strong>
+          <span>{{ remaining > 0 ? `剩余 ${remaining} 秒` : '本回合已超时' }}</span>
+          <button v-if="room.myRole === 'host' && remaining === 0 && room.turnDeadline && !pendingQuestion" class="text-button" :disabled="locked" @click="act('skip_turn')">跳过超时回合</button>
+        </div>
+        <template v-if="room.myRole === 'player'">
+          <p v-if="room.mode === 'competitive' && !myTurn" class="meta">等待你的提问回合。</p>
+          <form class="room-action-form" @submit.prevent="ask">
+            <label>向主持人提问<input v-model="question" maxlength="500" :disabled="locked || !myTurn" placeholder="输入一个可以回答是、否或无关的问题" /></label>
+            <button :disabled="locked || !myTurn || !question.trim()">发送问题</button>
+          </form>
+          <form class="room-action-form" @submit.prevent="submitRestore">
+            <label>还原真相<textarea v-model="restore" rows="3" maxlength="2000" :disabled="locked || !myTurn || pendingRestore" placeholder="把完整推理单独提交给主持人" /></label>
+            <button :disabled="locked || !myTurn || pendingRestore || !restore.trim()">提交还原</button>
+          </form>
+          <p v-if="pendingRestore" class="meta">已提交还原，等待主持人判定。</p>
+          <div class="room-controls">
+            <button class="small-button" :disabled="locked || pendingAnswer" @click="act('answer_request')">{{ pendingAnswer ? '等待查看申请结果' : '申请查看汤底' }}</button>
+            <button class="small-button" :disabled="locked" @click="retire">退出玩家席位</button>
+          </div>
+        </template>
+        <p v-else-if="room.myRole === 'spectator'" class="meta">你正在旁观，可以查看公开的问答与判定。</p>
+        <p v-else class="meta">请回答玩家问题，并判定还原与查看申请。</p>
+      </section>
+
+      <section v-if="room.status === 'finished'" class="room-result">
+        <h3>对局结束</h3>
+        <p v-if="room.mode === 'competitive'">{{ room.winnerId ? `${names[room.winnerId] || '玩家'} 获胜` : '本局没有获胜者' }}</p>
+        <p v-else>本局已有 {{ room.members.filter(item => item.correct).length }} 人还原正确。</p>
+        <button v-if="room.myRole === 'host' && !room.answerPublished" class="small-button" :disabled="locked" @click="act('publish_answer')">公开汤底</button>
+      </section>
+
+      <div v-if="room.answer" class="answer"><h3>汤底</h3><p>{{ room.answer }}</p></div>
+      <RoomEvents :room="room" :busy="locked" @action="act" />
     </template>
   </section>
 </template>

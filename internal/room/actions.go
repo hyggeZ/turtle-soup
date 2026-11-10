@@ -34,16 +34,31 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		if tx.QueryRow(ctx, `SELECT host_request FROM room_members WHERE room_id=$1 AND user_id=$2`, id, in.UserID).Scan(&requested) != nil || !requested {
 			return bad()
 		}
-		if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator',seen_answer=TRUE WHERE room_id=$1 AND user_id=$2`, id, host); err != nil {
+		if err := lockSoup(ctx, tx, soupID); err != nil {
 			return "", err
+		}
+		playing, err := playingElsewhere(ctx, tx, soupID, in.UserID, id)
+		if err != nil {
+			return "", err
+		}
+		if playing {
+			return "", errors.New("申请人仍在其他同题房间推理")
+		}
+		if host != 0 {
+			if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator',seen_answer=TRUE WHERE room_id=$1 AND user_id=$2`, id, host); err != nil {
+				return "", err
+			}
 		}
 		if _, err := tx.Exec(ctx, `UPDATE room_members SET role='host',seen_answer=TRUE,host_request=FALSE WHERE room_id=$1 AND user_id=$2`, id, in.UserID); err != nil {
 			return "", err
 		}
-		_, err := tx.Exec(ctx, `UPDATE rooms SET host_id=$2 WHERE id=$1`, id, in.UserID)
+		_, err = tx.Exec(ctx, `UPDATE rooms SET host_id=$2 WHERE id=$1`, id, in.UserID)
+		if err == nil {
+			_, err = tx.Exec(ctx, `INSERT INTO soup_reveals(soup_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, soupID, in.UserID)
+		}
 		return "主持人已更换", err
 	case "start":
-		if status != "waiting" || (user != owner && user != host) {
+		if status != "waiting" || host == 0 || (user != owner && user != host) {
 			return bad()
 		}
 		var first int64
@@ -81,8 +96,14 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 			return "", err
 		}
 		if mode == "competitive" {
-			if err := nextTurn(ctx, tx, id, turn); err != nil {
+			var asker int64
+			if err := tx.QueryRow(ctx, `SELECT user_id FROM room_events WHERE id=$1`, in.EventID).Scan(&asker); err != nil {
 				return "", err
+			}
+			if turn != nil && *turn == asker {
+				if err := nextTurn(ctx, tx, id, turn); err != nil {
+					return "", err
+				}
 			}
 		}
 		return "已回答", nil
@@ -92,6 +113,16 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		}
 		if mode == "competitive" && (turn == nil || *turn != user || deadline == nil || time.Now().After(*deadline)) {
 			return "", errors.New("当前不是你的回合")
+		}
+		var pending bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM room_events e WHERE e.room_id=$1 AND e.user_id=$2 AND e.kind='restore'
+			AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='restore_result')
+		)`, id, user).Scan(&pending); err != nil {
+			return "", err
+		}
+		if pending {
+			return "", errors.New("请等待上一条还原的判定")
 		}
 		return "已提交还原", add("restore", in.Body, "", 0)
 	case "judge":
@@ -113,48 +144,152 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 				_, err := tx.Exec(ctx, `UPDATE rooms SET status='finished',winner_id=$2,turn_user_id=NULL,turn_deadline=NULL WHERE id=$1`, id, player)
 				return "答对，对局结束", err
 			}
+			if err := finishIfNoPlayers(ctx, tx, id); err != nil {
+				return "", err
+			}
 		}
 		return "已判定", nil
 	case "answer_request":
 		if status != "active" || role != "player" {
 			return bad()
 		}
+		var pending bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM room_events e WHERE e.room_id=$1 AND e.user_id=$2 AND e.kind='answer_request'
+			AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer_result')
+		)`, id, user).Scan(&pending); err != nil {
+			return "", err
+		}
+		if pending {
+			return "", errors.New("请等待上一条查看申请的处理")
+		}
 		return "已申请查看汤底", add("answer_request", "", "", 0)
 	case "answer_decide":
 		if status != "active" || role != "host" || !oneOf(in.Result, "同意", "拒绝") || !eventReady(ctx, tx, id, in.EventID, "answer_request") {
 			return bad()
 		}
+		var player int64
+		if in.Result == "同意" {
+			if err := tx.QueryRow(ctx, `SELECT user_id FROM room_events WHERE id=$1`, in.EventID).Scan(&player); err != nil {
+				return "", err
+			}
+			if err := lockSoup(ctx, tx, soupID); err != nil {
+				return "", err
+			}
+			playing, err := playingElsewhere(ctx, tx, soupID, player, id)
+			if err != nil {
+				return "", err
+			}
+			if playing {
+				return "", errors.New("申请人仍在其他同题房间推理")
+			}
+		}
 		if err := add("answer_result", "", in.Result, in.EventID); err != nil {
 			return "", err
 		}
 		if in.Result == "同意" {
-			var player int64
-			if err := tx.QueryRow(ctx, `SELECT user_id FROM room_events WHERE id=$1`, in.EventID).Scan(&player); err != nil {
-				return "", err
-			}
 			if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator',seen_answer=TRUE WHERE room_id=$1 AND user_id=$2`, id, player); err != nil {
 				return "", err
 			}
+			if _, err := tx.Exec(ctx, `INSERT INTO soup_reveals(soup_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, soupID, player); err != nil {
+				return "", err
+			}
 			if mode == "competitive" && turn != nil && *turn == player {
-				if err := nextTurn(ctx, tx, id, turn); err != nil {
+				pending, err := unansweredQuestion(ctx, tx, id, player)
+				if err != nil {
+					return "", err
+				}
+				if !pending {
+					if err := nextTurn(ctx, tx, id, turn); err != nil {
+						return "", err
+					}
+				} else if err := finishIfNoPlayers(ctx, tx, id); err != nil {
+					return "", err
+				}
+			} else if mode == "casual" {
+				if err := finishIfNoPlayers(ctx, tx, id); err != nil {
 					return "", err
 				}
 			}
 		}
 		return "已处理申请", nil
 	case "skip_turn":
-		if mode != "competitive" || status != "active" || deadline == nil || time.Now().Before(*deadline) {
+		if mode != "competitive" || status != "active" || turn == nil || deadline == nil || time.Now().Before(*deadline) {
 			return bad()
 		}
+		pending, err := unansweredQuestion(ctx, tx, id, *turn)
+		if err != nil {
+			return "", err
+		}
+		if pending {
+			return "", errors.New("请等待主持人回答")
+		}
 		return "已跳过超时玩家", nextTurn(ctx, tx, id, turn)
+	case "retire":
+		if status != "active" || role != "player" {
+			return bad()
+		}
+		if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator' WHERE room_id=$1 AND user_id=$2`, id, user); err != nil {
+			return "", err
+		}
+		if mode == "competitive" && turn != nil && *turn == user {
+			pending, err := unansweredQuestion(ctx, tx, id, user)
+			if err != nil {
+				return "", err
+			}
+			if !pending {
+				return "已退出玩家席位", nextTurn(ctx, tx, id, turn)
+			}
+		}
+		return "已退出玩家席位", finishIfNoPlayers(ctx, tx, id)
 	case "finish":
 		if mode != "casual" || status != "active" || role != "host" {
 			return bad()
 		}
+		var players int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM room_members WHERE room_id=$1 AND role='player'`, id).Scan(&players); err != nil {
+			return "", err
+		}
+		if players != 0 {
+			return "", errors.New("还有玩家在推理")
+		}
 		_, err := tx.Exec(ctx, `UPDATE rooms SET status='finished' WHERE id=$1`, id)
 		return "对局结束", err
+	case "publish_answer":
+		if status != "finished" || role != "host" {
+			return bad()
+		}
+		if err := lockSoup(ctx, tx, soupID); err != nil {
+			return "", err
+		}
+		playing, err := memberPlayingElsewhere(ctx, tx, soupID, id)
+		if err != nil {
+			return "", err
+		}
+		if playing {
+			return "", errors.New("有成员仍在其他同题房间推理")
+		}
+		_, err = tx.Exec(ctx, `UPDATE rooms SET answer_published=TRUE WHERE id=$1`, id)
+		if err == nil {
+			_, err = tx.Exec(ctx, `INSERT INTO soup_reveals(soup_id,user_id)
+				SELECT $1,user_id FROM room_members WHERE room_id=$2 ON CONFLICT DO NOTHING`, soupID, id)
+		}
+		return "汤底已公开", err
 	}
 	return "", errors.New("未知操作")
+}
+
+// 共探模式在最后一名玩家离席后结束，并保留公开过程供回看。
+func finishIfNoPlayers(ctx context.Context, tx pgx.Tx, room int64) error {
+	var players int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM room_members WHERE room_id=$1 AND role='player'`, room).Scan(&players); err != nil {
+		return err
+	}
+	if players == 0 {
+		_, err := tx.Exec(ctx, `UPDATE rooms SET status='finished',turn_user_id=NULL,turn_deadline=NULL WHERE id=$1`, room)
+		return err
+	}
+	return nil
 }
 
 func oneOf(value string, choices ...string) bool {
@@ -173,6 +308,15 @@ func eventReady(ctx context.Context, tx pgx.Tx, room, event int64, kind string) 
 	var count int
 	err := tx.QueryRow(ctx, `SELECT count(*) FROM room_events e WHERE e.id=$1 AND e.room_id=$2 AND e.kind=$3 AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id)`, event, room, kind).Scan(&count)
 	return err == nil && count == 1
+}
+
+func unansweredQuestion(ctx context.Context, tx pgx.Tx, room, user int64) (bool, error) {
+	var pending bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM room_events q WHERE q.room_id=$1 AND q.kind='question' AND q.user_id=$2
+		AND NOT EXISTS(SELECT 1 FROM room_events a WHERE a.parent_id=q.id AND a.kind='answer')
+	)`, room, user).Scan(&pending)
+	return pending, err
 }
 
 func nextTurn(ctx context.Context, tx pgx.Tx, room int64, current *int64) error {

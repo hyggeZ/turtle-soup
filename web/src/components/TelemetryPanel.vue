@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { request } from '../api'
 
 const data = ref(null)
+const aiMetrics = ref([])
 const selected = ref(null)
 const error = ref('')
 const loading = ref(false)
@@ -18,7 +19,12 @@ const maxP95 = computed(() => Math.max(1, ...(data.value?.routes || []).map(item
 async function load() {
   loading.value = true
   try {
-    data.value = await request('/api/admin/telemetry')
+    const [trace, ai] = await Promise.all([
+      request('/api/admin/telemetry'),
+      request('/api/admin/ai-metrics'),
+    ])
+    data.value = trace
+    aiMetrics.value = ai
     error.value = ''
     if (selected.value) {
       selected.value = data.value.recent.find(item => item.traceId === selected.value.traceId) || null
@@ -42,11 +48,11 @@ onMounted(load)
     <template v-if="data">
       <div class="telemetry-summary">
         <article><span>日志占用</span><strong>{{ size(data.logBytes) }}</strong><small>上限 {{ size(data.maxLogBytes) }}</small></article>
-        <article><span>近期请求</span><strong>{{ data.routes.reduce((sum, route) => sum + route.count, 0) }}</strong><small>最近 300 次请求的统计</small></article>
-        <article><span>近期错误</span><strong>{{ data.routes.reduce((sum, route) => sum + route.errors, 0) }}</strong><small>HTTP 4xx 与 5xx</small></article>
+        <article><span>近期请求</span><strong>{{ data.recentCount }}</strong><small>其中 WebSocket 连接 {{ data.connections }} 次</small></article>
+        <article><span>近期错误</span><strong>{{ data.errorCount }}</strong><small>最近 300 次请求的 HTTP 4xx 与 5xx</small></article>
       </div>
       <section class="admin-section">
-        <div class="admin-section-heading"><h2>接口耗时</h2><span>最近 300 次请求</span></div>
+        <div class="admin-section-heading"><h2>接口耗时</h2><span>最近 300 次请求，不含 WebSocket 连接时长</span></div>
         <p v-if="!data.routes.length" class="muted">还没有请求记录。</p>
         <div v-for="route in data.routes" :key="route.route" class="telemetry-route">
           <div><strong>{{ route.route }}</strong><span>{{ route.count }} 次 · 错误 {{ route.errors }} 次</span></div>
@@ -65,11 +71,28 @@ onMounted(load)
                 <td>{{ new Date(item.time).toLocaleString('zh-CN') }}</td>
                 <td>{{ item.method }} {{ item.route }}</td>
                 <td>{{ item.status }}</td>
-                <td>{{ number(item.durationMs) }} ms</td>
+                <td>{{ number(item.durationMs) }} ms{{ item.status === 101 ? '（连接时长）' : '' }}</td>
                 <td>{{ number(item.authMs) }} ms</td>
                 <td>{{ number(item.dbMs) }} ms</td>
                 <td>{{ item.dbCount }}</td>
                 <td><button class="admin-table-button" @click="selected = item">查看链路</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="admin-section">
+        <div class="admin-section-heading"><h2>AI 模型调用</h2><span>近 7 天，按模型与提示词版本统计</span></div>
+        <p v-if="!aiMetrics.length" class="muted">还没有模型调用记录。</p>
+        <div v-else class="admin-table-wrap">
+          <table class="simple-table telemetry-table">
+            <thead><tr><th>模型</th><th>提示词</th><th>调用</th><th>成功</th><th>格式错误</th><th>服务错误</th><th>平均耗时</th><th>P95</th></tr></thead>
+            <tbody>
+              <tr v-for="item in aiMetrics" :key="`${item.model}:${item.promptVersion}`">
+                <td>{{ item.model }}</td><td>{{ item.promptVersion }}</td>
+                <td>{{ item.calls }}</td><td>{{ item.successes }}</td>
+                <td>{{ item.invalidOutput }}</td><td>{{ item.providerError }}</td>
+                <td>{{ number(item.avgMs) }} ms</td><td>{{ number(item.p95Ms) }} ms</td>
               </tr>
             </tbody>
           </table>

@@ -16,14 +16,15 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var code, mode, status, title, surface, role string
-	var owner, host, soupID int64
-	var max int
-	var public, seen bool
+	var code, mode, status, title, surface, genre, role string
+	var owner, soupID int64
+	var host *int64
+	var max, difficulty, horror int
+	var public, seen, answerPublished bool
 	var turn *int64
 	var deadline *time.Time
 	var winner *int64
-	e := h.db.QueryRow(c.Request.Context(), `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,s.title,s.surface,m.role,m.seen_answer FROM rooms r JOIN soups s ON s.id=r.soup_id JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &role, &seen)
+	e := h.db.QueryRow(c.Request.Context(), `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,r.soup_title,r.soup_surface,r.soup_genre,r.soup_difficulty,r.soup_horror,r.answer_published,m.role,m.seen_answer FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &seen)
 	if e != nil {
 		fail(c, e)
 		return
@@ -47,7 +48,9 @@ func (h *Handler) get(c *gin.Context) {
 	}
 	rows.Close()
 	events := make([]gin.H, 0)
-	ev, e := h.db.Query(c.Request.Context(), `SELECT id,user_id,kind,body,result,parent_id,created_at FROM room_events WHERE room_id=$1 ORDER BY id`, id)
+	ev, e := h.db.Query(c.Request.Context(), `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
+		EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer')
+		FROM room_events e LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`, id)
 	if e != nil {
 		fail(c, e)
 		return
@@ -56,11 +59,16 @@ func (h *Handler) get(c *gin.Context) {
 		var eid, uid int64
 		var kind, body, result string
 		var parent *int64
+		var subject *int64
 		var at time.Time
-		if ev.Scan(&eid, &uid, &kind, &body, &result, &parent, &at) != nil {
+		var answered bool
+		if ev.Scan(&eid, &uid, &kind, &body, &result, &parent, &at, &subject, &answered) != nil {
 			ev.Close()
 			fail(c, errors.New("scan"))
 			return
+		}
+		if kind == "question" && !answered && uid != u.ID && role != "host" {
+			continue
 		}
 		if kind == "restore" && uid != u.ID && role != "host" {
 			body = ""
@@ -68,12 +76,15 @@ func (h *Handler) get(c *gin.Context) {
 		if kind == "answer_request" && uid != u.ID && role != "host" {
 			continue
 		}
-		events = append(events, gin.H{"id": eid, "userId": uid, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
+		if kind == "answer_result" && role != "host" && (subject == nil || *subject != u.ID) {
+			continue
+		}
+		events = append(events, gin.H{"id": eid, "userId": uid, "subjectUserId": subject, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
 	}
 	ev.Close()
 	answer := ""
-	if role == "host" || seen {
-		_ = h.db.QueryRow(c.Request.Context(), `SELECT answer FROM soups WHERE id=$1`, soupID).Scan(&answer)
+	if role == "host" || seen || answerPublished {
+		_ = h.db.QueryRow(c.Request.Context(), `SELECT soup_answer FROM rooms WHERE id=$1`, id).Scan(&answer)
 	}
-	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "winnerId": winner, "title": title, "surface": surface, "answer": answer, "myRole": role, "members": members, "events": events})
+	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events})
 }

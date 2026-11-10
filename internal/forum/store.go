@@ -11,6 +11,7 @@ import (
 )
 
 var ErrNotFound = errors.New("记录不存在")
+var ErrPlaying = errors.New("正在参与该题对局")
 
 type Soup struct {
 	ID         int64     `json:"id"`
@@ -34,6 +35,7 @@ type Comment struct {
 	AuthorID  int64     `json:"authorId"`
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
+	Spoiler   bool      `json:"spoiler"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -99,23 +101,41 @@ func (s *Store) Create(ctx context.Context, author int64, title, surface, answer
 	return id, err
 }
 
-func (s *Store) Answer(ctx context.Context, id int64) (string, error) {
+// RevealAnswer 与加入房间共用题目行锁，避免“看汤底”和“入场”并发穿过检查。
+func (s *Store) RevealAnswer(ctx context.Context, user, id int64) (string, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
 	var answer string
-	err := s.db.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1`, id).Scan(&answer)
+	err = tx.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1 FOR UPDATE`, id).Scan(&answer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
-	return answer, err
-}
-
-// Playing 禁止正在参与该题对局的玩家从社区接口直接读取汤底。
-func (s *Store) Playing(ctx context.Context, user, soup int64) (bool, error) {
+	if err != nil {
+		return "", err
+	}
 	var playing bool
-	err := s.db.QueryRow(ctx, `SELECT EXISTS(
+	err = tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM rooms r JOIN room_members m ON m.room_id=r.id
-		WHERE r.soup_id=$1 AND r.status='active' AND m.user_id=$2 AND m.role='player'
-	)`, soup, user).Scan(&playing)
-	return playing, err
+		WHERE r.soup_id=$1 AND r.status IN ('waiting','active','paused')
+		AND m.user_id=$2 AND m.role='player'
+	) OR EXISTS(
+		SELECT 1 FROM ai_games WHERE soup_id=$1 AND user_id=$2 AND status='active'
+	)`, id, user).Scan(&playing)
+	if err != nil {
+		return "", err
+	}
+	if playing {
+		return "", ErrPlaying
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO soup_reveals(soup_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, id, user)
+	if err != nil {
+		return "", err
+	}
+	return answer, tx.Commit(ctx)
 }
 
 func (s *Store) SetRelation(ctx context.Context, table string, user, target int64, add bool) error {
@@ -132,7 +152,8 @@ func (s *Store) SetRelation(ctx context.Context, table string, user, target int6
 }
 
 func (s *Store) ListComments(ctx context.Context, soup int64) ([]Comment, error) {
-	rows, err := s.db.Query(ctx, `SELECT c.id,c.author_id,u.username,c.body,c.created_at
+	rows, err := s.db.Query(ctx, `SELECT c.id,c.author_id,u.username,
+		CASE WHEN c.spoiler THEN '' ELSE c.body END,c.spoiler,c.created_at
 		FROM comments c JOIN users u ON u.id=c.author_id WHERE c.soup_id=$1 ORDER BY c.created_at,c.id LIMIT 100`, soup)
 	if err != nil {
 		return nil, err
@@ -141,7 +162,7 @@ func (s *Store) ListComments(ctx context.Context, soup int64) ([]Comment, error)
 	items := make([]Comment, 0)
 	for rows.Next() {
 		var item Comment
-		if err := rows.Scan(&item.ID, &item.AuthorID, &item.Author, &item.Body, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.AuthorID, &item.Author, &item.Body, &item.Spoiler, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -149,9 +170,19 @@ func (s *Store) ListComments(ctx context.Context, soup int64) ([]Comment, error)
 	return items, rows.Err()
 }
 
-func (s *Store) AddComment(ctx context.Context, soup, author int64, body string) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO comments(soup_id,author_id,body) VALUES($1,$2,$3)`, soup, author, body)
+func (s *Store) AddComment(ctx context.Context, soup, author int64, body string, spoiler bool) error {
+	_, err := s.db.Exec(ctx, `INSERT INTO comments(soup_id,author_id,body,spoiler) VALUES($1,$2,$3,$4)`, soup, author, body, spoiler)
 	return err
+}
+
+// 剧透正文只由显式展开接口读取，普通评论列表始终留空。
+func (s *Store) SpoilerComment(ctx context.Context, soup, comment int64) (string, error) {
+	var body string
+	err := s.db.QueryRow(ctx, `SELECT body FROM comments WHERE id=$1 AND soup_id=$2 AND spoiler=TRUE`, comment, soup).Scan(&body)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return body, err
 }
 
 func (s *Store) GetProfile(ctx context.Context, viewer, id int64) (Profile, error) {

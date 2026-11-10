@@ -62,3 +62,24 @@ func TestRequestTrace(t *testing.T) {
 		t.Fatal("重启后未恢复近期请求")
 	}
 }
+
+func TestWebSocketDurationIsNotHTTPLatency(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	router := gin.New()
+	router.Use(store.Middleware())
+	router.GET("/socket", func(c *gin.Context) { c.Status(http.StatusSwitchingProtocols) })
+	router.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+	for _, path := range []string{"/socket", "/health"} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	snapshot := store.Snapshot()
+	if snapshot.RecentCount != 2 || snapshot.Connections != 1 || len(snapshot.Routes) != 1 || snapshot.Routes[0].Route != "/health" {
+		t.Fatalf("WebSocket 时长混入接口统计：%+v", snapshot)
+	}
+}
