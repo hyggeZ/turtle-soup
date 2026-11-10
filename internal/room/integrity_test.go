@@ -393,6 +393,10 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	if res := action(cookies[1], "restore", "restore_001", map[string]any{"body": "私密还原内容"}); res.Code != http.StatusOK {
 		t.Fatalf("提交还原失败：%d %s", res.Code, res.Body.String())
 	}
+	observer = call(http.MethodGet, path, nil, cookies[0])
+	if observer.Code != http.StatusOK || strings.Contains(observer.Body.String(), `"kind":"restore"`) || strings.Contains(observer.Body.String(), "私密还原内容") {
+		t.Fatalf("其他玩家提前看到了私人还原：%d %s", observer.Code, observer.Body.String())
+	}
 	host = call(http.MethodGet, path, nil, cookies[2])
 	var game struct {
 		Events []struct {
@@ -438,7 +442,7 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		t.Fatalf("公开汤底后未记录玩家已看底：%v", err)
 	}
 	observer = call(http.MethodGet, path, nil, cookies[0])
-	if observer.Code != http.StatusOK || strings.Contains(observer.Body.String(), "私密还原内容") || !strings.Contains(observer.Body.String(), fmt.Sprintf(`"subjectUserId":%d`, users[1])) {
+	if observer.Code != http.StatusOK || strings.Contains(observer.Body.String(), `"kind":"restore"`) || strings.Contains(observer.Body.String(), "私密还原内容") || !strings.Contains(observer.Body.String(), fmt.Sprintf(`"subjectUserId":%d`, users[1])) {
 		t.Fatalf("旁观者看到了私人还原或缺少公开判定：%d %s", observer.Code, observer.Body.String())
 	}
 

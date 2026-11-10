@@ -16,15 +16,18 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var code, mode, status, title, surface, genre, role string
+	var code, mode, status, title, surface, genre, role, answer string
 	var owner, soupID int64
 	var host *int64
 	var max, difficulty, horror int
-	var public, seen, answerPublished bool
+	var public, answerPublished bool
 	var turn *int64
 	var deadline *time.Time
 	var winner *int64
-	e := h.db.QueryRow(c.Request.Context(), `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,r.soup_title,r.soup_surface,r.soup_genre,r.soup_difficulty,r.soup_horror,r.answer_published,m.role,m.seen_answer FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &seen)
+	// 汤底在成员身份查询中按权限返回，减少一次数据库往返。
+	e := h.db.QueryRow(c.Request.Context(), `SELECT r.code,r.mode,r.status,r.owner_id,r.host_id,r.soup_id,r.max_players,r.public,r.turn_user_id,r.turn_deadline,r.winner_id,r.soup_title,r.soup_surface,r.soup_genre,r.soup_difficulty,r.soup_horror,r.answer_published,m.role,
+		CASE WHEN m.role='host' OR m.seen_answer OR r.answer_published THEN COALESCE(r.soup_answer,'') ELSE '' END
+		FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &answer)
 	if e != nil {
 		fail(c, e)
 		return
@@ -71,7 +74,8 @@ func (h *Handler) get(c *gin.Context) {
 			continue
 		}
 		if kind == "restore" && uid != u.ID && role != "host" {
-			body = ""
+			// 私人还原在判定前不向其他玩家暴露提交者或提交时间。
+			continue
 		}
 		if kind == "answer_request" && uid != u.ID && role != "host" {
 			continue
@@ -82,9 +86,5 @@ func (h *Handler) get(c *gin.Context) {
 		events = append(events, gin.H{"id": eid, "userId": uid, "subjectUserId": subject, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
 	}
 	ev.Close()
-	answer := ""
-	if role == "host" || seen || answerPublished {
-		_ = h.db.QueryRow(c.Request.Context(), `SELECT soup_answer FROM rooms WHERE id=$1`, id).Scan(&answer)
-	}
 	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events})
 }
