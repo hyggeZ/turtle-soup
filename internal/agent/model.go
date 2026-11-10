@@ -16,7 +16,7 @@ import (
 
 const defaultBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 const defaultModel = "qwen-plus"
-const PromptVersion = "v1"
+const PromptVersion = "v2"
 
 var ErrUnavailable = errors.New("AI 服务未配置或暂时不可用")
 var ErrInvalidOutput = errors.New("AI 返回了无效判定")
