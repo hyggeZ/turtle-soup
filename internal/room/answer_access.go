@@ -35,3 +35,13 @@ func memberPlayingElsewhere(ctx context.Context, tx pgx.Tx, soupID, roomID int64
 	)`, soupID, roomID).Scan(&playing)
 	return playing, err
 }
+
+// 公开汤底前检查本房间成员是否正在进行同题 AI 单人局。
+func memberPlayingAI(ctx context.Context, tx pgx.Tx, soupID, roomID int64) (bool, error) {
+	var playing bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM room_members m JOIN ai_games g ON g.user_id=m.user_id
+		WHERE m.room_id=$2 AND g.soup_id=$1 AND g.status='active'
+	)`, soupID, roomID).Scan(&playing)
+	return playing, err
+}

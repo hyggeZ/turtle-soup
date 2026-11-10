@@ -269,6 +269,13 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		if playing {
 			return "", errors.New("有成员仍在其他同题房间推理")
 		}
+		aiPlaying, err := memberPlayingAI(ctx, tx, soupID, id)
+		if err != nil {
+			return "", err
+		}
+		if aiPlaying {
+			return "", errors.New("有成员仍在进行同题单人对局")
+		}
 		_, err = tx.Exec(ctx, `UPDATE rooms SET answer_published=TRUE WHERE id=$1`, id)
 		if err == nil {
 			_, err = tx.Exec(ctx, `INSERT INTO soup_reveals(soup_id,user_id)

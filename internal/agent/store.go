@@ -53,13 +53,22 @@ type reservation struct {
 	Soup Soup
 }
 
-// Create 锁住题目行，使“开始推理”和社区查看汤底按确定顺序执行。
+// Create 先锁用户、再锁题目；同一用户跨题开局串行，题目锁防止同时揭底。
 func (s *Store) Create(ctx context.Context, user, soupID int64) (int64, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
+	var lockedUser int64
+	// NO KEY UPDATE 不阻挡其他表对用户外键的只读检查。
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, user).Scan(&lockedUser)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
 	var author int64
 	var soup Soup
 	err = tx.QueryRow(ctx, `SELECT author_id,title,surface,answer FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, soupID).Scan(&author, &soup.Title, &soup.Surface, &soup.Answer)
