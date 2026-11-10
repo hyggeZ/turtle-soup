@@ -9,17 +9,30 @@ if [[ ! "$version" =~ ^[a-zA-Z0-9._-]+$ ]]; then
 fi
 
 app_dir=/srv/turtle-soup
-source_dir="/tmp/turtle-soup-$version"
+source_dir="$HOME/.local/share/turtle-soup/uploads/$version"
 release_dir="$app_dir/releases/$version"
-test -f "$source_dir/turtle-server"
-test -f "$source_dir/turtle-admin"
+test -f "$source_dir/turtle-server" && test ! -L "$source_dir/turtle-server"
+test -f "$source_dir/turtle-admin" && test ! -L "$source_dir/turtle-admin"
 test -f "$source_dir/web.tar.gz"
+
+# 先以普通用户解包，再检查归档路径与符号链接。
+if tar -tzf "$source_dir/web.tar.gz" | grep -E '(^/|(^|/)\.\.(/|$))' >/dev/null; then
+  echo '网页归档包含非法路径' >&2
+  exit 1
+fi
+mkdir -p "$source_dir/web"
+tar -xzf "$source_dir/web.tar.gz" -C "$source_dir/web"
+if find "$source_dir/web" -type l | grep -q .; then
+  echo '网页归档包含符号链接' >&2
+  exit 1
+fi
+test -f "$source_dir/web/index.html"
 
 previous=$(readlink -f "$app_dir/current" || true)
 sudo install -d -m 0755 "$release_dir/web"
 sudo install -m 0755 "$source_dir/turtle-server" "$release_dir/turtle-server"
 sudo install -m 0755 "$source_dir/turtle-admin" "$release_dir/turtle-admin"
-sudo tar -xzf "$source_dir/web.tar.gz" -C "$release_dir/web"
+sudo cp -a "$source_dir/web/." "$release_dir/web/"
 sudo chown -R root:root "$release_dir"
 sudo ln -sfn "$release_dir" "$app_dir/current.next"
 sudo mv -Tf "$app_dir/current.next" "$app_dir/current"

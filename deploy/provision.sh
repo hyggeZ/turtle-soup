@@ -7,7 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if ! id turtlesoup >/dev/null 2>&1; then
   sudo useradd --system --home-dir "$app_dir" --shell /usr/sbin/nologin turtlesoup
 fi
-sudo install -d -o turtlesoup -g turtlesoup -m 0755 "$app_dir"
+sudo install -d -o root -g root -m 0755 "$app_dir"
 sudo install -d -o turtlesoup -g turtlesoup -m 0700 "$app_dir/logs"
 sudo install -d -m 0755 "$app_dir/releases"
 
@@ -21,6 +21,7 @@ fi
 # 管理员初始密码只留在 SSH 登录用户的私有文件中，不进入仓库或输出。
 password_dir="$HOME/.local/share/turtle-soup"
 install -d -m 0700 "$password_dir"
+install -d -m 0700 "$password_dir/uploads"
 if [ ! -f "$password_dir/admin-password" ]; then
   openssl rand -hex 18 > "$password_dir/admin-password"
   chmod 0600 "$password_dir/admin-password"
