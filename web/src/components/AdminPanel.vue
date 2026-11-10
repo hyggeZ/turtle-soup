@@ -1,6 +1,6 @@
 <script setup>
 // 账号列表与操作按钮由角色决定，服务端会再次检查权限。
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { request, send } from '../api'
 
 const props = defineProps({ role: { type: String, required: true } })
@@ -13,27 +13,53 @@ const passwordId = ref(0)
 const passwordName = ref('')
 const newPassword = ref('')
 const modal = ref('')
+const modalBox = ref(null)
+const createInput = ref(null)
+const passwordInput = ref(null)
 const fieldsLocked = ref(true)
+let returnFocus = null
 
-function openCreate() {
+async function openCreate() {
   form.username = ''
   form.password = ''
   form.role = 'user'
   fieldsLocked.value = true
   error.value = ''
+  returnFocus = document.activeElement
   modal.value = 'create'
+  await nextTick()
+  createInput.value?.focus()
 }
-function openPassword(item) {
+async function openPassword(item) {
   passwordId.value = item.id
   passwordName.value = item.username
   newPassword.value = ''
   error.value = ''
+  returnFocus = document.activeElement
   modal.value = 'password'
+  await nextTick()
+  passwordInput.value?.focus()
 }
-function closeModal() {
+async function closeModal() {
   modal.value = ''
   form.password = ''
   newPassword.value = ''
+  await nextTick()
+  if (returnFocus?.isConnected) returnFocus.focus()
+  returnFocus = null
+}
+function trapFocus(event) {
+  const items = modalBox.value?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled])')
+  if (!items?.length) return
+  const first = items[0]
+  const last = items[items.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 async function load() {
@@ -120,15 +146,15 @@ onMounted(load)
       </div>
     </section>
 
-    <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal" @keydown.esc="closeModal">
-      <section class="admin-modal" role="dialog" aria-modal="true" :aria-label="modal === 'create' ? '创建账号' : '修改密码'">
+    <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal">
+      <section ref="modalBox" class="admin-modal" role="dialog" aria-modal="true" :aria-label="modal === 'create' ? '创建账号' : '修改密码'" @keydown.esc.stop.prevent="closeModal" @keydown.tab="trapFocus">
         <div class="admin-modal-heading">
           <div><p class="admin-eyebrow">账号管理</p><h2>{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2></div>
           <button type="button" class="admin-close-button" aria-label="关闭弹窗" @click="closeModal">×</button>
         </div>
         <form v-if="modal === 'create'" autocomplete="off" @submit.prevent="create">
           <label>用户名
-            <input v-model="form.username" name="new-account-name" autocomplete="off" :readonly="fieldsLocked" @focus="fieldsLocked = false" required maxlength="20" placeholder="输入用户名" />
+            <input ref="createInput" v-model="form.username" name="new-account-name" autocomplete="off" :readonly="fieldsLocked" @focus="fieldsLocked = false" required maxlength="20" placeholder="输入用户名" />
           </label>
           <label>初始密码
             <input v-model="form.password" name="new-account-secret" type="password" autocomplete="new-password" :readonly="fieldsLocked" @focus="fieldsLocked = false" required minlength="8" placeholder="至少 8 位" />
@@ -145,7 +171,7 @@ onMounted(load)
         <form v-else autocomplete="off" @submit.prevent="changePassword">
           <p class="admin-form-note">账号：{{ passwordName }}</p>
           <label>新密码
-            <input v-model="newPassword" name="updated-account-secret" type="password" autocomplete="new-password" required minlength="8" placeholder="输入新密码" />
+            <input ref="passwordInput" v-model="newPassword" name="updated-account-secret" type="password" autocomplete="new-password" required minlength="8" placeholder="输入新密码" />
           </label>
           <p class="admin-form-note">修改后，该账号需要重新登录。</p>
           <p v-if="error" role="alert">{{ error }}</p>

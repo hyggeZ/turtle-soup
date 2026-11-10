@@ -237,7 +237,8 @@ form > button { justify-self: start; }
   .admin-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #e7e7e7; }
   .admin-brand { height: 60px; padding: 0 16px; font-size: 19px; }
   .admin-nav { display: flex; padding: 8px 12px; }
-  .admin-nav-title, .admin-back-link { display: none; }
+  .admin-nav-title { display: none; }
+  .admin-back-link { display: block; margin: 0 24px 14px; color: #d6e5fa; }
   .admin-nav button { width: auto; }
   .admin-topbar { height: 56px; padding: 0 16px; }
   .admin-user { gap: 12px; }
@@ -253,8 +254,8 @@ form > button { justify-self: start; }
   .admin-main .simple-table { min-width: 590px; white-space: nowrap; }
   .telemetry-summary { grid-template-columns: 1fr; }
   .body-layout { display: block; }
-  .side-nav { min-height: 0; border-right: 0; border-bottom: 1px solid #eee; padding: 12px; flex-direction: row; overflow-x: auto; }
-  .side-nav button { white-space: nowrap; }
+  .side-nav { min-height: 0; border-right: 0; border-bottom: 1px solid #eee; padding: 10px 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .side-nav button { padding: 10px 4px; text-align: center; font-size: 13px; }
   .header-inner { min-height: 62px; gap: 14px; flex-wrap: wrap; padding: 12px 16px; }
   .brand { font-size: 21px; }
   .main-nav { order: 3; width: 100%; gap: 24px; }
