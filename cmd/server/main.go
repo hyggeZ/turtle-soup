@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,16 @@ func main() {
 	}
 
 	router := newRouter(monitor)
+	// 默认只信任 TCP 对端地址；部署在反向代理后时显式列出代理 IP 或 CIDR。
+	if raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); raw != "" {
+		proxies := strings.Split(raw, ",")
+		for i := range proxies {
+			proxies[i] = strings.TrimSpace(proxies[i])
+		}
+		if err := router.SetTrustedProxies(proxies); err != nil {
+			log.Fatal("TRUSTED_PROXIES 无效: ", err)
+		}
+	}
 	auth := account.NewHandler(account.NewPGStore(db), os.Getenv("COOKIE_SECURE") == "true")
 	auth.Register(router)
 	forum.NewHandler(forum.NewStore(db), auth).Register(router)
@@ -73,6 +84,7 @@ func main() {
 
 func newRouter(monitor *telemetry.Store) *gin.Engine {
 	router := gin.New()
+	_ = router.SetTrustedProxies(nil)
 	// 目前直接接收请求；不信任客户端伪造的代理 IP 头。
 	if err := router.SetTrustedProxies(nil); err != nil {
 		panic(err)

@@ -18,8 +18,10 @@ var usernamePattern = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
 func ValidUsername(name string) bool { return usernamePattern.MatchString(name) }
 
 type Handler struct {
-	store  Store
-	secure bool
+	store     Store
+	secure    bool
+	limiter   *requestLimiter
+	dummyHash []byte
 }
 
 type credentials struct {
@@ -28,7 +30,11 @@ type credentials struct {
 }
 
 func NewHandler(store Store, secureCookie bool) *Handler {
-	return &Handler{store: store, secure: secureCookie}
+	hash, err := bcrypt.GenerateFromPassword([]byte("unused-password-for-timing"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("无法初始化密码校验")
+	}
+	return &Handler{store: store, secure: secureCookie, limiter: newRequestLimiter(), dummyHash: hash}
 }
 
 func (h *Handler) Register(router *gin.Engine) {
@@ -69,6 +75,10 @@ func (h *Handler) register(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "密码需为 8–72 字节"})
 		return
 	}
+	if !h.limiter.register(ctx.ClientIP()) {
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "操作过于频繁，请稍后再试"})
+		return
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -104,8 +114,17 @@ func (h *Handler) loginWithRole(ctx *gin.Context, adminOnly bool) {
 		return
 	}
 	name := strings.ToLower(strings.TrimSpace(input.Username))
+	if !ValidUsername(name) || len([]byte(input.Password)) > 72 {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+		return
+	}
+	if !h.limiter.login(ctx.ClientIP(), name) {
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "操作过于频繁，请稍后再试"})
+		return
+	}
 	user, err := h.store.FindUser(ctx.Request.Context(), name)
 	if errors.Is(err, ErrNotFound) {
+		_ = bcrypt.CompareHashAndPassword(h.dummyHash, []byte(input.Password))
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
