@@ -24,13 +24,28 @@ const pendingRoomCode = ref('')
 const loginTarget = ref('home')
 const hostingRoom = ref(false)
 const adminPage = window.location.pathname.startsWith('/admin')
+
+function roomViewKey(userId) { return `turtle_room_view_${userId}` }
+
 async function loadUser() {
-  try { user.value = await request('/api/me') }
+  try {
+    user.value = await request('/api/me')
+    // 刷新后恢复此账号正在看的房间，具体权限仍由服务端检查。
+    if (!adminPage && page.value === 'home') {
+      const roomId = Number(sessionStorage.getItem(roomViewKey(user.value.id)))
+      if (Number.isSafeInteger(roomId) && roomId > 0) {
+        selected.value = roomId
+        page.value = 'room'
+      }
+    }
+  }
   catch { user.value = null }
 }
 function canLeaveRoom() {
-  if (page.value !== 'room' || !hostingRoom.value) return true
-  return window.confirm('离开房间页面会暂停对局，重返房间后继续主持。确定离开吗？')
+  if (page.value !== 'room') return true
+  if (hostingRoom.value && !window.confirm('离开房间页面会暂停对局，重返房间后继续主持。确定离开吗？')) return false
+  if (user.value) sessionStorage.removeItem(roomViewKey(user.value.id))
+  return true
 }
 function openHome() { if (canLeaveRoom()) { notice.value = ''; page.value = 'home' } }
 function openEditor(id = 0) {
@@ -46,6 +61,7 @@ async function logout() {
   await send('/api/logout', 'POST')
   if (user.value) {
     sessionStorage.removeItem(`turtle_solo_action_${user.value.id}`)
+    sessionStorage.removeItem(roomViewKey(user.value.id))
     const prefix = `turtle_room_action_${user.value.id}_`
     for (let i = sessionStorage.length - 1; i >= 0; i--) {
       const key = sessionStorage.key(i)
@@ -59,7 +75,13 @@ async function logout() {
 }
 function openSoup(id) { if (canLeaveRoom()) { selected.value = id; notice.value = ''; page.value = 'soup' } }
 function openProfile(id) { if (canLeaveRoom()) { selected.value = id; page.value = 'profile' } }
-function openRoom(id) { if (canLeaveRoom()) { pendingRoomCode.value = ''; selected.value = id; page.value = 'room' } }
+function openRoom(id) {
+  if (!canLeaveRoom()) return
+  pendingRoomCode.value = ''
+  selected.value = id
+  page.value = 'room'
+  if (user.value) sessionStorage.setItem(roomViewKey(user.value.id), String(id))
+}
 function openLobby() { if (canLeaveRoom()) { chosenSoup.value = 0; page.value = 'lobby' } }
 function openLobbyForSoup(id) { if (canLeaveRoom()) { chosenSoup.value = id; page.value = 'lobby' } }
 function openSolo() { if (canLeaveRoom()) { chosenSoloSoup.value = 0; page.value = 'solo' } }

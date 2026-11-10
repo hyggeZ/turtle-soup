@@ -64,7 +64,7 @@ onMounted(load)
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
     <form class="inline-form" @submit.prevent="join(code)">
-      <input v-model="code" maxlength="8" placeholder="输入房间码" aria-label="房间码" required />
+      <input v-model="code" maxlength="32" placeholder="输入房间码" aria-label="房间码" required />
       <button :disabled="busy || !code.trim()">加入房间</button>
     </form>
 
