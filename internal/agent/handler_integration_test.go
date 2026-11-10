@@ -41,8 +41,18 @@ func (d *testDecider) DecideQuestion(_ context.Context, _ Soup, _ []Exchange, qu
 	return Decision{Result: "是", Model: "mock", PromptVersion: PromptVersion}, nil
 }
 
-func (d *testDecider) JudgeRestore(_ context.Context, _ Soup, _ []Exchange, _ string) (Decision, error) {
+func (d *testDecider) JudgeRestore(_ context.Context, _ Soup, _ []Exchange, restore string) (Decision, error) {
 	d.calls.Add(1)
+	switch restore {
+	case "部分还原":
+		return Decision{Result: "不完整", Model: "mock", PromptVersion: PromptVersion}, nil
+	case "错误还原":
+		return Decision{Result: "错误", Model: "mock", PromptVersion: PromptVersion}, nil
+	case "格式异常":
+		return Decision{}, ErrInvalidOutput
+	case "未知判定":
+		return Decision{Result: "也许", Model: "mock"}, nil
+	}
 	return Decision{Result: "正确", Model: "mock", PromptVersion: PromptVersion}, nil
 }
 
@@ -206,6 +216,32 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	}
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM ai_attempts WHERE game_id=$1 AND success=FALSE`, gameID).Scan(&failedAttempts); err != nil || failedAttempts != 1 {
 		t.Fatalf("模型错误指标未记录：%d %v", failedAttempts, err)
+	}
+	// 回放不完整、错误和格式异常输出，任何一种都不能结束对局或返回汤底。
+	for _, sample := range []struct {
+		body, key, result string
+		status            int
+	}{
+		{"部分还原", "restore_partial_001", "不完整", http.StatusOK},
+		{"错误还原", "restore_wrong_001", "错误", http.StatusOK},
+		{"格式异常", "restore_invalid_001", "", http.StatusBadGateway},
+		{"未知判定", "restore_unknown_001", "", http.StatusBadGateway},
+	} {
+		res := action("restore", sample.body, sample.key)
+		if res.Code != sample.status || strings.Contains(res.Body.String(), "测试汤底") || sample.result != "" && !strings.Contains(res.Body.String(), sample.result) {
+			t.Fatalf("错误还原泄底或状态异常：%s %d %s", sample.body, res.Code, res.Body.String())
+		}
+		view = call(http.MethodGet, gamePath, nil, cookies[1])
+		if view.Code != http.StatusOK || !strings.Contains(view.Body.String(), `"status":"active"`) || strings.Contains(view.Body.String(), "测试汤底") {
+			t.Fatalf("错误还原结束对局或泄底：%s %d %s", sample.body, view.Code, view.Body.String())
+		}
+	}
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM ai_events WHERE game_id=$1`, gameID).Scan(&events); err != nil || events != 3 {
+		t.Fatalf("格式异常产生事件或正常回放未保存：%d %v", events, err)
+	}
+	var leaked bool
+	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM soup_reveals WHERE soup_id=$1 AND user_id=$2)`, soupID, users[1]).Scan(&leaked); err != nil || leaked {
+		t.Fatalf("错误还原提前记录剧透：%t %v", leaked, err)
 	}
 	if finished := action("restore", "完整还原", "restore_001"); finished.Code != http.StatusOK || !strings.Contains(finished.Body.String(), "测试汤底") {
 		t.Fatalf("正确还原后未结束：%d %s", finished.Code, finished.Body.String())

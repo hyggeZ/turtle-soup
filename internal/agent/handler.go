@@ -180,6 +180,9 @@ func (h *Handler) action(c *gin.Context) {
 		endModel := telemetry.Begin(c.Request.Context(), "ai.model")
 		decision, err = h.decide(c.Request.Context(), id, claim.Soup, input)
 		endModel()
+		if err == nil && !validDecision(input.Type, decision.Result) {
+			err = ErrInvalidOutput
+		}
 		model := decision.Model
 		if qwen, ok := h.decider.(*Qwen); ok && model == "" {
 			model = qwen.Model
@@ -207,6 +210,13 @@ func (h *Handler) action(c *gin.Context) {
 		response["answer"] = answer
 	}
 	c.JSON(http.StatusOK, response)
+}
+
+func validDecision(kind, result string) bool {
+	if kind == "question" {
+		return oneOf(result, "是", "否", "无关")
+	}
+	return kind == "restore" && oneOf(result, "正确", "错误", "不完整")
 }
 
 func (h *Handler) decide(ctx context.Context, id int64, soup Soup, input actionInput) (Decision, error) {
