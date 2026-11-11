@@ -4,6 +4,7 @@ package forum
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -66,6 +67,12 @@ type ListFilter struct {
 	Horror     int
 }
 
+// ListCursor 以创建时间和 ID 定位上一页末尾；ID 处理同一时间的并列记录。
+type ListCursor struct {
+	CreatedAt time.Time
+	ID        int64
+}
+
 // 列表只查询汤面；汤底必须经过单独的接口读取。
 const soupFields = `s.id, s.author_id, u.username, s.title, s.surface, s.genre,
 	s.difficulty, s.horror, s.created_at,
@@ -101,6 +108,48 @@ func (s *Store) List(ctx context.Context, viewer int64, filter ListFilter, limit
 		AND ($5 = -1 OR s.horror = $5)
 		ORDER BY s.created_at DESC, s.id DESC LIMIT $6 OFFSET $7`
 	rows, err := s.db.Query(ctx, query, viewer, filter.AuthorID, filter.Genre, filter.Difficulty, filter.Horror, limit, offset)
+	return scanSoupRows(rows, err)
+}
+
+// ListAfter 使用现有时间索引从游标之后读取，避免深页 OFFSET 扫描。
+func (s *Store) ListAfter(ctx context.Context, viewer int64, filter ListFilter, limit int, cursor *ListCursor) ([]Soup, error) {
+	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id=s.author_id
+		WHERE s.deleted_at IS NULL`
+	// 作者在自己的发布列表中可看到隐藏题；其他列表只使用公开题目的索引路径。
+	if filter.AuthorID != viewer || viewer == 0 {
+		query += ` AND s.hidden_at IS NULL`
+	}
+	args := []any{viewer}
+	if filter.AuthorID != 0 {
+		query += ` AND s.author_id=$` + strconv.Itoa(len(args)+1)
+		args = append(args, filter.AuthorID)
+	}
+	if filter.Genre != "" {
+		query += ` AND s.genre=$` + strconv.Itoa(len(args)+1)
+		args = append(args, filter.Genre)
+	}
+	if filter.Difficulty != 0 {
+		query += ` AND s.difficulty=$` + strconv.Itoa(len(args)+1)
+		args = append(args, filter.Difficulty)
+	}
+	if filter.Horror != -1 {
+		query += ` AND s.horror=$` + strconv.Itoa(len(args)+1)
+		args = append(args, filter.Horror)
+	}
+	if cursor != nil {
+		dateParam := strconv.Itoa(len(args) + 1)
+		idParam := strconv.Itoa(len(args) + 2)
+		query += ` AND (s.created_at,s.id)<($` + dateParam + `::timestamptz,$` + idParam + `::bigint)`
+		args = append(args, cursor.CreatedAt, cursor.ID)
+	}
+	query += ` ORDER BY s.created_at DESC,s.id DESC`
+	args = append(args, limit)
+	query += ` LIMIT $` + strconv.Itoa(len(args))
+	rows, err := s.db.Query(ctx, query, args...)
+	return scanSoupRows(rows, err)
+}
+
+func scanSoupRows(rows pgx.Rows, err error) ([]Soup, error) {
 	if err != nil {
 		return nil, err
 	}

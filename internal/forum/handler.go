@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"turtle-soup/internal/account"
@@ -104,11 +105,7 @@ func replyError(ctx *gin.Context, err error) {
 }
 
 func (h *Handler) list(ctx *gin.Context) {
-	page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	if err != nil || page < 1 || page > 10000 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "页码无效"})
-		return
-	}
+	var err error
 	filter := ListFilter{Horror: -1}
 	if raw := ctx.Query("author"); raw != "" {
 		filter.AuthorID, err = strconv.ParseInt(raw, 10, 64)
@@ -136,7 +133,36 @@ func (h *Handler) list(ctx *gin.Context) {
 			return
 		}
 	}
-	items, err := h.store.List(ctx.Request.Context(), h.viewer(ctx), filter, 20, (page-1)*20)
+	var items []Soup
+	viewer := h.viewer(ctx)
+	page, hasPage := ctx.GetQuery("page")
+	before, hasBefore := ctx.GetQuery("before")
+	beforeID, hasBeforeID := ctx.GetQuery("beforeId")
+	if hasPage && (hasBefore || hasBeforeID) || hasBefore != hasBeforeID {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "分页参数无效"})
+		return
+	}
+	if hasPage {
+		// 兼容旧版页码接口；新页面使用游标，深页不再跳过大量旧记录。
+		number, parseErr := strconv.Atoi(page)
+		if parseErr != nil || number < 1 || number > 10000 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "页码无效"})
+			return
+		}
+		items, err = h.store.List(ctx.Request.Context(), viewer, filter, 20, (number-1)*20)
+	} else {
+		var cursor *ListCursor
+		if hasBefore {
+			created, timeErr := time.Parse(time.RFC3339Nano, before)
+			id, idErr := strconv.ParseInt(beforeID, 10, 64)
+			if timeErr != nil || idErr != nil || id < 1 {
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": "题目游标无效"})
+				return
+			}
+			cursor = &ListCursor{CreatedAt: created, ID: id}
+		}
+		items, err = h.store.ListAfter(ctx.Request.Context(), viewer, filter, 20, cursor)
+	}
 	if err != nil {
 		replyError(ctx, err)
 		return
