@@ -28,7 +28,7 @@ async function submit() {
       <button :disabled="busy">{{ mode === 'login' ? '登录' : '创建账号' }}</button>
     </form>
     <button class="text-button" @click="mode = mode === 'login' ? 'register' : 'login'; message = ''">{{ mode === 'login' ? '没有账号？注册' : '已有账号？登录' }}</button>
-    <p class="muted">用户名 3–20 位小写字母、数字或下划线；密码至少 8 字节。</p>
+    <p v-if="mode === 'register'" class="muted">用户名 3–20 位小写字母、数字或下划线；密码至少 8 字节。</p>
     <p v-if="message" role="status">{{ message }}</p>
   </section>
 </template>

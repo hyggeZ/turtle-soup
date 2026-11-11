@@ -157,7 +157,7 @@ onUnmounted(() => { loadVersion++ })
 <template>
   <section class="panel admin-panel">
     <div class="admin-page-heading">
-      <div><p class="admin-eyebrow">用户与权限</p><h1>账号管理</h1></div>
+      <h1>账号管理</h1>
       <button class="admin-primary-button" @click="openCreate"><span aria-hidden="true">＋</span> 创建账号</button>
     </div>
 
@@ -199,7 +199,7 @@ onUnmounted(() => { loadVersion++ })
     <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal">
       <section ref="modalBox" class="admin-modal" role="dialog" aria-modal="true" :aria-label="modal === 'create' ? '创建账号' : '修改密码'" @keydown.esc.stop.prevent="closeModal" @keydown.tab="trapFocus">
         <div class="admin-modal-heading">
-          <div><p class="admin-eyebrow">账号管理</p><h2>{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2></div>
+          <h2>{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2>
           <button type="button" class="admin-close-button" aria-label="关闭弹窗" @click="closeModal">×</button>
         </div>
         <form v-if="modal === 'create'" autocomplete="off" @submit.prevent="create">

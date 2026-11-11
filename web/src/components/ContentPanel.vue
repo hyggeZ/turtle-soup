@@ -93,14 +93,14 @@ onUnmounted(() => { loadVersion++ })
 <template>
   <section class="admin-panel admin-content-panel">
     <div class="admin-page-heading">
-      <div><p class="admin-eyebrow">CONTENT</p><h1>题目管理</h1></div>
+      <h1>题目管理</h1>
     </div>
     <section class="admin-section">
       <div class="admin-section-heading">
         <h2>题目列表</h2>
         <span>已显示 {{ items.length }} 道题</span>
       </div>
-      <p class="muted">隐藏题目会关闭尚未开局的房间；恢复公开也不会重开这些房间。已开局对局继续使用原题目。作者已删除的题目不能在后台恢复。</p>
+      <p class="muted">已开局对局不受隐藏影响；作者删除的题目不可恢复。</p>
       <form class="inline-form admin-search" @submit.prevent="load">
         <input v-model="query" aria-label="搜索题目或作者" maxlength="50" placeholder="搜索题目或作者" />
         <select v-model="status" aria-label="题目状态">

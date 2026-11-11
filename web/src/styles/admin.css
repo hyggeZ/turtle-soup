@@ -1,0 +1,103 @@
+/* 后台与游戏使用同一配色，但保持独立的导航与表格布局。 */
+.admin-layout { display: grid; grid-template-columns: 222px minmax(0, 1fr); min-height: 100vh; background: var(--paper); }
+.admin-sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; border-right: 1px solid #1d4138; background: #244c42; color: #e7eee8; }
+.admin-brand { display: flex; align-items: center; min-height: 72px; padding: 0 24px; border-bottom: 1px solid #ffffff24; color: #fff; font-size: 19px; font-weight: 700; text-decoration: none; }
+.admin-brand::before { content: '汤'; width: 29px; height: 29px; display: grid; place-items: center; margin-right: 11px; border-radius: 4px; background: #d8e8d7; color: #244c42; font-size: 16px; }
+.admin-nav { display: grid; align-content: start; gap: 5px; padding: 24px 14px; }
+.admin-nav button { width: 100%; min-height: 43px; border: 0; border-radius: 5px; padding: 10px 15px; background: transparent; color: #d4e4d8; text-align: left; }
+.admin-nav button:hover { background: #ffffff17; color: #fff; }
+.admin-nav button.active { position: relative; background: #dbeade; color: #1d4d40; font-weight: 700; }
+.admin-nav button.active::before { content: ''; position: absolute; top: 4px; bottom: 4px; left: 0; width: 3px; background: #56a184; }
+.admin-back-link { margin: auto 28px 28px; color: #d4e4d8; font-size: 14px; text-decoration: none; }
+.admin-back-link:hover { color: #fff; text-decoration: underline; }
+.admin-workspace { min-width: 0; }
+.admin-topbar { min-height: 72px; display: flex; align-items: center; justify-content: flex-end; padding: 0 38px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.admin-user { display: flex; align-items: center; gap: 20px; color: var(--muted); font-size: 14px; }
+.admin-main { max-width: 1270px; margin: 0 auto; padding: 38px 38px 80px; }
+.admin-main .panel { max-width: none; }
+.admin-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
+.admin-main .admin-panel h1 { font-size: 32px; }
+.admin-section { margin-bottom: 22px; padding: 25px 27px 29px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.admin-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 21px; }
+.admin-section-heading h2 { font-size: 19px; }
+.admin-section-heading span { color: var(--muted); font-size: 13px; }
+.admin-primary-button, .admin-search-button { min-height: 41px; border: 1px solid var(--green); border-radius: 5px; padding: 9px 17px; background: var(--green); color: #fff; font-weight: 650; white-space: nowrap; }
+.admin-primary-button:hover:not(:disabled), .admin-search-button:hover:not(:disabled) { background: var(--green-dark); }
+.admin-primary-button span { margin-right: 3px; font-size: 18px; vertical-align: -1px; }
+.admin-secondary-button, .admin-table-button { min-height: 35px; border: 1px solid #b8c8bd; border-radius: 5px; padding: 7px 11px; background: #fff; color: var(--green); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.admin-secondary-button:hover:not(:disabled), .admin-table-button:hover:not(:disabled) { background: var(--green-soft); }
+.admin-search { margin-bottom: 21px; }
+.admin-search input { min-width: 0; max-width: 360px; flex: 1; }
+.admin-search select { min-width: 145px; width: auto; }
+.admin-search button { flex: 0 0 auto; }
+.admin-scroll-hint { display: none; }
+.admin-table-wrap { overflow-x: auto; }
+.admin-main .simple-table { margin-top: 0; }
+.admin-main .simple-table th { background: #f2f4ee; color: var(--muted); font-size: 13px; font-weight: 650; }
+.admin-main .simple-table td { color: #3a4b41; font-size: 14px; }
+.admin-main .simple-table tbody tr:hover { background: #f7f9f3; }
+.admin-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.admin-role, .admin-status { display: inline-block; border-radius: 4px; padding: 5px 9px; background: #edf1eb; color: #586b5d; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.admin-role.admin { background: #e5eff0; color: #376970; }
+.admin-role.super_admin { background: var(--green-soft); color: var(--green); }
+.admin-status { background: var(--green-soft); color: var(--green); }
+.admin-status.disabled { background: #f7eae6; color: var(--red); }
+.admin-soup-surface { max-width: 520px; white-space: pre-wrap; line-height: 1.6; }
+.admin-content-panel details { margin-top: 5px; color: var(--green); }
+.admin-content-panel summary { cursor: pointer; }
+.admin-content-panel details p { color: var(--ink); }
+
+/* 弹窗承载账号修改和日志详情。 */
+.admin-modal-backdrop { position: fixed; z-index: 20; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: #18342bd1; }
+.admin-modal { width: min(100%, 460px); max-height: calc(100vh - 40px); overflow-y: auto; border: 1px solid var(--line); border-radius: 7px; padding: 0 26px 26px; background: var(--surface); box-shadow: 0 20px 65px #14281d38; }
+.admin-modal-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin: 0 -26px 22px; padding: 22px 26px 19px; border-bottom: 1px solid var(--line); background: #f0f4ed; }
+.admin-modal-heading h2 { font-size: 22px; }
+.admin-close-button { border: 0; padding: 0; background: none; color: var(--muted); font-size: 25px; line-height: 1; }
+.admin-close-button:hover { color: var(--ink); }
+.admin-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.admin-form-note { margin: 0; color: var(--muted); font-size: 13px; }
+.admin-login-page { background: var(--paper); }
+.admin-login-card { margin-top: 65px; }
+.admin-login-card h1 { margin-bottom: 24px; font-size: 28px; }
+
+/* 日志页保留摘要、耗时条和可展开链路。 */
+.telemetry-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-bottom: 22px; }
+.telemetry-summary article { display: grid; gap: 8px; padding: 21px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.telemetry-summary span, .telemetry-summary small { color: var(--muted); }
+.telemetry-summary strong { color: var(--ink); font-size: 28px; }
+.telemetry-route { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(80px, 1fr) auto; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.telemetry-route > div:first-child { display: grid; gap: 5px; }
+.telemetry-route > div:first-child span { color: var(--muted); }
+.telemetry-bar { height: 8px; border-radius: 5px; background: #e4eae1; }
+.telemetry-bar span { display: block; min-width: 2px; height: 100%; border-radius: 5px; background: #65a18a; }
+.telemetry-table { min-width: 850px; }
+.telemetry-detail { width: min(100%, 560px); }
+.telemetry-id { overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
+.telemetry-span { display: flex; justify-content: space-between; gap: 20px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+
+@media (max-width: 800px) {
+  .admin-layout { grid-template-columns: 180px minmax(0, 1fr); }
+  .admin-main, .admin-topbar { padding-right: 24px; padding-left: 24px; }
+  .telemetry-route { grid-template-columns: 1fr; gap: 8px; }
+}
+@media (max-width: 600px) {
+  .admin-layout { display: block; }
+  .admin-sidebar { position: static; height: auto; }
+  .admin-brand { min-height: 56px; padding: 0 16px; font-size: 18px; }
+  .admin-nav { display: flex; overflow-x: auto; gap: 5px; padding: 8px 12px; }
+  .admin-nav button { width: auto; flex: 0 0 auto; }
+  .admin-back-link { display: block; margin: 0; padding: 4px 18px 12px; }
+  .admin-topbar { min-height: 52px; padding: 0 16px; }
+  .admin-user { gap: 11px; font-size: 12px; }
+  .admin-main { padding: 27px 16px 60px; }
+  .admin-main .admin-panel h1 { font-size: 27px; }
+  .admin-section { padding: 20px 16px 23px; }
+  .admin-page-heading { align-items: start; }
+  .admin-page-heading .admin-primary-button { padding: 8px 11px; }
+  .admin-scroll-hint { display: block; margin: 0 0 7px; color: var(--muted); font-size: 12px; }
+  .admin-table-wrap { margin: 0 -16px; padding: 0 16px; }
+  .admin-main .simple-table { min-width: 590px; white-space: nowrap; }
+  .admin-modal { padding: 0 20px 22px; }
+  .admin-modal-heading { margin: 0 -20px 20px; padding: 20px; }
+  .telemetry-summary { grid-template-columns: 1fr; }
+}

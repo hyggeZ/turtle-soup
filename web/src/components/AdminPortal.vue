@@ -33,7 +33,6 @@ async function login() {
     <aside class="admin-sidebar" aria-label="后台导航">
       <a class="admin-brand" href="/admin">海龟汤后台</a>
       <nav class="admin-nav">
-        <span class="admin-nav-title">管理</span>
         <button
           v-for="item in pages"
           :key="item.id"
@@ -45,7 +44,6 @@ async function login() {
     </aside>
     <div class="admin-workspace">
       <header class="admin-topbar">
-        <span>管理后台</span>
         <div class="admin-user">
           <span>{{ user.role === 'super_admin' ? '超级管理员' : '管理员' }} · {{ user.username }}</span>
           <button class="text-button" @click="emit('logout')">退出</button>

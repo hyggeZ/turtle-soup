@@ -69,10 +69,7 @@ onUnmounted(() => { loadVersion++ })
 
 <template>
   <section class="feed-section">
-    <div class="feed-heading">
-      <h2>{{ author ? '发布的汤' : '最新发布' }}</h2>
-      <span class="feed-count">已显示 {{ items.length }} 道</span>
-    </div>
+    <h2 v-if="author" class="profile-soups-heading">发布的汤</h2>
     <div v-if="error" role="alert">
       <p>{{ error }}</p>
       <button class="small-button" @click="load">重试</button>

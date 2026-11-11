@@ -40,7 +40,7 @@ onMounted(load)
 <template>
   <section class="panel admin-panel telemetry-page">
     <div class="admin-page-heading">
-      <div><p class="admin-eyebrow">服务监控</p><h1>运行日志</h1></div>
+      <h1>运行日志</h1>
       <button class="admin-primary-button" :disabled="loading" @click="load">刷新数据</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
@@ -102,7 +102,7 @@ onMounted(load)
     </template>
     <div v-if="selected" class="admin-modal-backdrop" @click.self="selected = null">
       <section class="admin-modal telemetry-detail" role="dialog" aria-modal="true" aria-label="请求链路">
-        <div class="admin-modal-heading"><div><p class="admin-eyebrow">请求链路</p><h2>{{ selected.method }} {{ selected.route }}</h2></div><button class="admin-close-button" aria-label="关闭弹窗" @click="selected = null">×</button></div>
+        <div class="admin-modal-heading"><h2>{{ selected.method }} {{ selected.route }}</h2><button class="admin-close-button" aria-label="关闭弹窗" @click="selected = null">×</button></div>
         <p class="telemetry-id">Trace ID：{{ selected.traceId }}</p>
         <p>总耗时 {{ number(selected.durationMs) }} ms · 状态 {{ selected.status }}</p>
         <div v-for="(span, index) in selected.spans" :key="index" class="telemetry-span"><span>{{ span.name }}</span><strong>{{ number(span.durationMs) }} ms</strong></div>

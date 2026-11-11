@@ -152,16 +152,18 @@ onMounted(load)
 onUnmounted(() => { loadVersion++ })
 </script>
 <template>
-  <section class="panel" v-if="soup">
+  <section class="panel soup-detail" v-if="soup">
     <button class="text-button" @click="emit('back')">← 返回广场</button><h2>{{ soup.title }}</h2>
     <p v-if="soup.hidden" class="muted" role="status">题目已被管理员隐藏，仅作者可查看。暂时不能编辑、互动或用于新对局；你仍可删除它。</p>
     <p class="meta">{{ soup.genre }} · 难度 {{ soup.difficulty }}/5 · 恐怖 {{ soup.horror }}/5 · <button class="text-button" @click="emit('profile', soup.authorId)">@{{ soup.author }}</button></p>
     <p class="surface full">{{ soup.surface }}</p>
-    <div v-if="!soup.hidden" class="actions"><button v-if="user" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
-      <button v-if="user" @click="toggle('bookmark', soup.bookmarked)">{{ soup.bookmarked ? '★ 已收藏' : '☆ 收藏' }} {{ soup.bookmarks }}</button>
-      <button v-if="user && !answer" @click="showAnswer">查看汤底</button>
-      <button v-if="user" @click="emit('play', soup.id)">用此题建房</button>
-      <button @click="emit('solo', soup.id)">单人试玩</button></div>
+    <div v-if="!soup.hidden" class="actions">
+      <button v-if="user" class="small-button" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
+      <button v-if="user" class="small-button" @click="toggle('bookmark', soup.bookmarked)">{{ soup.bookmarked ? '★ 已收藏' : '☆ 收藏' }} {{ soup.bookmarks }}</button>
+      <button v-if="user && !answer" class="small-button" @click="showAnswer">查看汤底</button>
+      <button v-if="user" class="small-button" @click="emit('play', soup.id)">用此题建房</button>
+      <button class="primary-button" @click="emit('solo', soup.id)">单人试玩</button>
+    </div>
     <div v-if="isAuthor" class="author-actions">
       <button v-if="soup.hidden && !answer" class="small-button" @click="showAnswer">查看汤底</button>
       <button v-if="!soup.hidden" class="small-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>

@@ -56,7 +56,7 @@ async function submit() {
 watch(() => props.editId, load, { immediate: true })
 </script>
 <template>
-  <section class="panel"><div class="section-head"><h2>{{ editId ? '编辑海龟汤' : '发布海龟汤' }}</h2><button class="text-button" @click="emit('cancel')">取消</button></div>
+  <section class="panel editor-page"><div class="section-head"><h2>{{ editId ? '编辑海龟汤' : '发布海龟汤' }}</h2><button class="text-button" @click="emit('cancel')">取消</button></div>
     <p v-if="loading" class="muted">正在读取题目…</p>
     <form v-else-if="ready" @submit.prevent="submit">
       <label>标题<input v-model="form.title" maxlength="80" required /></label>

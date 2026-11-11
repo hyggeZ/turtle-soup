@@ -60,19 +60,19 @@ onMounted(load)
 
 <template>
   <section v-if="profile">
-    <div class="panel">
+    <div class="panel profile-header">
       <button class="text-button" @click="emit('back')">← 返回广场</button>
       <h2>{{ profile.displayName || profile.username }}</h2>
       <p class="meta">@{{ profile.username }} · 关注者 {{ profile.followers }} · 正在关注 {{ profile.following }}</p>
       <p v-if="profile.bio">{{ profile.bio }}</p>
       <p v-if="notice" class="room-notice" role="status">{{ notice }}</p>
-      <button v-if="user && user.id !== profile.id" @click="toggle">{{ profile.followed ? '取消关注' : '关注' }}</button>
-      <button v-if="user?.id === profile.id && !editing" @click="edit">编辑资料</button>
+      <button v-if="user && user.id !== profile.id" class="primary-button" @click="toggle">{{ profile.followed ? '取消关注' : '关注' }}</button>
+      <button v-if="user?.id === profile.id && !editing" class="small-button" @click="edit">编辑资料</button>
       <form v-if="editing" @submit.prevent="save">
         <label>展示名<input v-model="form.displayName" maxlength="40" placeholder="留空时显示用户名" /></label>
         <label>简介<textarea v-model="form.bio" maxlength="300" rows="4"></textarea></label>
         <div class="actions">
-          <button :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
+          <button class="primary-button" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
           <button type="button" class="text-button" :disabled="saving" @click="editing = false">取消</button>
         </div>
       </form>

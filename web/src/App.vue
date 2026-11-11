@@ -125,7 +125,10 @@ onMounted(loadUser)
       </aside>
       <main class="page-wrap">
         <section v-if="page === 'home'" class="home-content">
-          <h1>题目社区</h1>
+          <div class="page-heading">
+            <h1>题目社区</h1>
+            <button v-if="user" class="primary-button" @click="openEditor()">＋ 发布汤题</button>
+          </div>
           <p v-if="notice" class="room-notice" role="status">{{ notice }}</p>
           <SoupList :refresh="refresh" @open="openSoup" @profile="openProfile" />
         </section>

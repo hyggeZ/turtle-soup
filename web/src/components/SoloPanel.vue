@@ -19,6 +19,7 @@ const busy = ref(false)
 const loading = ref(false)
 const gamesLoading = ref(false)
 const gamesError = ref('')
+const showGames = ref(false)
 const activeCount = computed(() => games.value.filter(item => item.status === 'active').length)
 let loadVersion = 0
 let listVersion = 0
@@ -109,6 +110,7 @@ async function start() {
   try {
     const created = await send('/api/ai/solo', 'POST', { soupId: soupId.value })
     if (version !== actionVersion || props.user?.id !== userId) return
+    showGames.value = false
     localStorage.setItem(gameKey(userId), String(created.id))
     retry.value = readRetry(userId, created.id)
     await loadGame(created.id)
@@ -207,6 +209,7 @@ function chooseAgain() {
   loadVersion++
   loading.value = false
   game.value = null
+  showGames.value = false
   soupId.value = 0
   latest.value = null
   error.value = ''
@@ -217,6 +220,8 @@ function chooseAgain() {
 async function openGame(id) {
   if (!props.user || busy.value || loading.value || game.value?.id === id) return
   actionVersion++
+  // 切换对局后直接显示汤面和操作。
+  showGames.value = false
   game.value = null
   latest.value = null
   question.value = ''
@@ -245,6 +250,7 @@ watch(() => props.user?.id, userId => {
   latest.value = null
   error.value = ''
   gamesError.value = ''
+  showGames.value = false
   loading.value = false
   gamesLoading.value = false
   busy.value = false
@@ -259,18 +265,33 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++ })
   <section class="panel solo-page">
     <div class="section-head">
       <h1>单人模式</h1>
-      <button v-if="game" class="text-button" :disabled="loading || busy" @click="loadGame(game.id)">刷新对局</button>
+      <div v-if="game" class="solo-head-actions">
+        <button class="text-button" aria-controls="solo-games" :aria-expanded="showGames" @click="showGames = !showGames">
+          {{ showGames ? '收起列表' : '查看其他对局' }}
+        </button>
+        <button class="text-button" :disabled="loading || busy" @click="loadGame(game.id)">刷新</button>
+      </div>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
-    <section v-if="user" class="solo-entry">
+    <div v-if="!user" class="solo-entry">
+      <button class="primary-button" @click="emit('login')">登录后试玩</button>
+    </div>
+
+    <div v-else-if="!game" class="solo-entry solo-start">
+      <h2>开始新对局</h2>
+      <SoupPicker v-model="soupId" />
+      <p v-if="activeCount >= 5" class="muted">已有 5 局正在进行，请先完成一局。</p>
+      <button class="primary-button" :disabled="busy || loading || gamesLoading || activeCount >= 5 || !soupId" @click="start">{{ busy ? '正在创建…' : loading ? '正在恢复对局…' : '开始推理' }}</button>
+    </div>
+
+    <section v-if="user" v-show="!game || showGames" id="solo-games" class="solo-entry solo-games">
       <div class="section-head">
-        <h2>我的单人对局</h2>
-        <button class="text-button" :disabled="gamesLoading" @click="loadGames">刷新列表</button>
+        <h2>我的对局</h2>
+        <button class="text-button" :disabled="gamesLoading" @click="loadGames">刷新</button>
       </div>
-      <p class="meta">最多同时进行 5 局，可回看最近结束的 20 局。</p>
       <p v-if="gamesLoading" role="status" class="muted">正在加载对局…</p>
       <p v-if="gamesError" role="alert">{{ gamesError }}</p>
-      <p v-if="!gamesLoading && !gamesError && !games.length" class="muted">还没有单人对局。</p>
+      <p v-if="!gamesLoading && !gamesError && !games.length" class="muted">暂无对局。</p>
       <article v-for="item in games" :key="item.id" class="room-row">
         <div>
           <strong>{{ item.title }}</strong>
@@ -281,19 +302,8 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++ })
         </button>
       </article>
     </section>
-    <div v-if="!user" class="solo-entry">
-      <p>登录后可以和 AI 主持人玩海龟汤。</p>
-      <button class="primary-button" @click="emit('login')">登录后试玩</button>
-    </div>
 
-    <div v-else-if="!game" class="solo-entry">
-      <p class="meta">选择一道尚未看过汤底的题目开始推理。</p>
-      <SoupPicker v-model="soupId" />
-      <p v-if="activeCount >= 5" class="muted">已有 5 局正在进行，请先完成其中一局再创建新对局。</p>
-      <button class="primary-button" :disabled="busy || loading || gamesLoading || activeCount >= 5 || !soupId" @click="start">{{ busy ? '正在创建…' : loading ? '正在恢复对局…' : '开始单人试玩' }}</button>
-    </div>
-
-    <template v-else>
+    <template v-if="game">
       <div class="room-summary">
         <h2>{{ game.title }}</h2>
         <p class="meta">{{ game.status === 'finished' ? '已结束' : '推理中' }}</p>
