@@ -45,13 +45,14 @@ func TestApplyFromEmptySchema(t *testing.T) {
 			t.Fatalf("第 %d 次初始化失败: %v", i+1, err)
 		}
 	}
-	var users, rooms, games string
-	err = db.QueryRow(ctx, `SELECT to_regclass('users'),to_regclass('rooms'),to_regclass('ai_games')`).Scan(&users, &rooms, &games)
-	if err != nil || users == "" || rooms == "" || games == "" {
-		t.Fatalf("核心数据表不完整: users=%q rooms=%q ai_games=%q err=%v", users, rooms, games, err)
+	var users, rooms, games, waitingIndex string
+	err = db.QueryRow(ctx, `SELECT to_regclass('users'),to_regclass('rooms'),to_regclass('ai_games'),to_regclass('rooms_soup_waiting_idx')`).
+		Scan(&users, &rooms, &games, &waitingIndex)
+	if err != nil || users == "" || rooms == "" || games == "" || waitingIndex == "" {
+		t.Fatalf("核心表或等待房索引不完整: users=%q rooms=%q ai_games=%q index=%q err=%v", users, rooms, games, waitingIndex, err)
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 12 {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 15 {
 		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
 	}
 }
@@ -112,7 +113,7 @@ func TestApplyFromVersionEight(t *testing.T) {
 	}
 	var count int
 	var table string
-	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage') FROM schema_migrations`).Scan(&count, &table); err != nil || count != 12 || table == "" {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage') FROM schema_migrations`).Scan(&count, &table); err != nil || count != 15 || table == "" {
 		t.Fatalf("升级结果错误：版本数=%d，新表=%q，错误=%v", count, table, err)
 	}
 	var calls int

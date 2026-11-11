@@ -60,7 +60,7 @@ func (h *Handler) settings(c *gin.Context) {
 	var author int64
 	var title, surface, answer, genre string
 	var difficulty, horror int
-	err = tx.QueryRow(ctx, `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, input.SoupID).
+	err = tx.QueryRow(ctx, `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR UPDATE`, input.SoupID).
 		Scan(&author, &title, &surface, &answer, &genre, &difficulty, &horror)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "题目不存在"})

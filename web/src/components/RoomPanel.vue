@@ -316,7 +316,7 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
 
       <section v-if="room.status === 'closed'" class="room-result">
         <h3>房间已关闭</h3>
-        <p>房主在开局前关闭了房间，成员和房间记录仍可查看。</p>
+        <p>房间在开局前已关闭，成员和房间记录仍可查看。</p>
       </section>
 
       <section v-if="room.status === 'paused'" class="room-paused">

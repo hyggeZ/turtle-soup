@@ -74,6 +74,16 @@ func idParam(ctx *gin.Context) (int64, bool) {
 }
 
 func replyError(ctx *gin.Context, err error) {
+	var limited *PublishLimitError
+	if errors.As(err, &limited) {
+		seconds := limited.RetrySeconds
+		if seconds < 1 {
+			seconds = 1
+		}
+		ctx.Header("Retry-After", strconv.Itoa(seconds))
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "发布过于频繁，请在 " + strconv.Itoa(seconds) + " 秒后重试"})
+		return
+	}
 	if errors.Is(err, ErrNotFound) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "内容不存在"})
 		return
@@ -83,6 +93,10 @@ func replyError(ctx *gin.Context, err error) {
 		return
 	}
 	if errors.Is(err, ErrActiveGame) {
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	if errors.Is(err, ErrModerated) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -255,10 +269,6 @@ func (h *Handler) relation(ctx *gin.Context, table string, add bool) {
 	}
 	id, ok := idParam(ctx)
 	if !ok {
-		return
-	}
-	if _, err := h.store.Get(ctx.Request.Context(), user, id); err != nil {
-		replyError(ctx, err)
 		return
 	}
 	if err := h.store.SetRelation(ctx.Request.Context(), table, user, id, add); err != nil {

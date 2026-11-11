@@ -14,6 +14,7 @@ var ErrNotFound = errors.New("记录不存在")
 var ErrPlaying = errors.New("正在参与该题对局")
 var ErrForbidden = errors.New("只有题目作者可以管理该题")
 var ErrActiveGame = errors.New("这道题仍有进行中的对局，暂时不能编辑")
+var ErrModerated = errors.New("题目已被管理员隐藏，暂时不能编辑")
 
 type Soup struct {
 	ID         int64     `json:"id"`
@@ -30,6 +31,7 @@ type Soup struct {
 	Comments   int       `json:"comments"`
 	Liked      bool      `json:"liked"`
 	Bookmarked bool      `json:"bookmarked"`
+	Hidden     bool      `json:"hidden"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
@@ -71,7 +73,8 @@ const soupFields = `s.id, s.author_id, u.username, s.title, s.surface, s.genre,
 	(SELECT COUNT(*) FROM soup_bookmarks WHERE soup_id = s.id),
 	(SELECT COUNT(*) FROM comments WHERE soup_id = s.id),
 	EXISTS(SELECT 1 FROM soup_likes WHERE soup_id = s.id AND user_id = $1),
-	EXISTS(SELECT 1 FROM soup_bookmarks WHERE soup_id = s.id AND user_id = $1)`
+	EXISTS(SELECT 1 FROM soup_bookmarks WHERE soup_id = s.id AND user_id = $1),
+	s.hidden_at IS NOT NULL`
 
 const soupDetailFields = soupFields + `,CASE WHEN s.author_id=$1 THEN s.answer ELSE '' END`
 
@@ -79,7 +82,7 @@ func scanSoup(row pgx.Row, detail bool) (Soup, error) {
 	var soup Soup
 	fields := []any{&soup.ID, &soup.AuthorID, &soup.Author, &soup.Title, &soup.Surface,
 		&soup.Genre, &soup.Difficulty, &soup.Horror, &soup.CreatedAt,
-		&soup.Likes, &soup.Bookmarks, &soup.Comments, &soup.Liked, &soup.Bookmarked}
+		&soup.Likes, &soup.Bookmarks, &soup.Comments, &soup.Liked, &soup.Bookmarked, &soup.Hidden}
 	if detail {
 		fields = append(fields, &soup.Answer)
 	}
@@ -92,7 +95,8 @@ func scanSoup(row pgx.Row, detail bool) (Soup, error) {
 
 func (s *Store) List(ctx context.Context, viewer int64, filter ListFilter, limit, offset int) ([]Soup, error) {
 	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id = s.author_id
-		WHERE s.deleted_at IS NULL AND ($2 = 0 OR s.author_id = $2)
+		WHERE s.deleted_at IS NULL AND (s.hidden_at IS NULL OR s.author_id=$1 AND s.author_id=$2)
+		AND ($2 = 0 OR s.author_id = $2)
 		AND ($3 = '' OR s.genre = $3) AND ($4 = 0 OR s.difficulty = $4)
 		AND ($5 = -1 OR s.horror = $5)
 		ORDER BY s.created_at DESC, s.id DESC LIMIT $6 OFFSET $7`
@@ -113,14 +117,35 @@ func (s *Store) List(ctx context.Context, viewer int64, filter ListFilter, limit
 }
 
 func (s *Store) Get(ctx context.Context, viewer, id int64) (Soup, error) {
-	return scanSoup(s.db.QueryRow(ctx, `SELECT `+soupDetailFields+` FROM soups s JOIN users u ON u.id=s.author_id WHERE s.id=$2 AND s.deleted_at IS NULL`, viewer, id), true)
+	return scanSoup(s.db.QueryRow(ctx, `SELECT `+soupDetailFields+` FROM soups s JOIN users u ON u.id=s.author_id
+		WHERE s.id=$2 AND s.deleted_at IS NULL AND (s.hidden_at IS NULL OR s.author_id=$1)`, viewer, id), true)
 }
 
 func (s *Store) Create(ctx context.Context, author int64, title, surface, answer, genre string, difficulty, horror int) (int64, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+	// 同一账号的发布先锁用户行，多个服务实例也不能同时越过额度。
+	if err := lockPublisher(ctx, tx, author); err != nil {
+		return 0, err
+	}
+	wait, err := publicationWait(ctx, tx, "soups", author, 3600, 10)
+	if err != nil {
+		return 0, err
+	}
+	if wait > 0 {
+		return 0, &PublishLimitError{RetrySeconds: wait}
+	}
 	var id int64
-	err := s.db.QueryRow(ctx, `INSERT INTO soups(author_id,title,surface,answer,genre,difficulty,horror)
-		VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, author, title, surface, answer, genre, difficulty, horror).Scan(&id)
-	return id, err
+	// 使用取得锁后的语句时间，与额度窗口的 statement_timestamp() 保持一致。
+	err = tx.QueryRow(ctx, `INSERT INTO soups(author_id,title,surface,answer,genre,difficulty,horror,created_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,statement_timestamp()) RETURNING id`, author, title, surface, answer, genre, difficulty, horror).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, tx.Commit(ctx)
 }
 
 // Update 锁定题目并检查作者；活跃对局期间不改题目正文。
@@ -131,7 +156,8 @@ func (s *Store) Update(ctx context.Context, user, id int64, title, surface, answ
 	}
 	defer tx.Rollback(ctx)
 	var author int64
-	err = tx.QueryRow(ctx, `SELECT author_id FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&author)
+	var hidden bool
+	err = tx.QueryRow(ctx, `SELECT author_id,hidden_at IS NOT NULL FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&author, &hidden)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Soup{}, ErrNotFound
 	}
@@ -140,6 +166,9 @@ func (s *Store) Update(ctx context.Context, user, id int64, title, surface, answ
 	}
 	if author != user {
 		return Soup{}, ErrForbidden
+	}
+	if hidden {
+		return Soup{}, ErrModerated
 	}
 	var active bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rooms WHERE soup_id=$1 AND status IN ('waiting','active','paused'))
@@ -161,7 +190,8 @@ func (s *Store) Update(ctx context.Context, user, id int64, title, surface, answ
 	return item, tx.Commit(ctx)
 }
 
-// Delete 只标记删除，已创建的真人房间和 AI 单人局继续使用各自的题目快照。
+// Delete 只标记作者删除；即使已被管理员隐藏，作者仍可最终删除自己的题目。
+// 已创建的真人房间和 AI 单人局继续使用各自的题目快照。
 func (s *Store) Delete(ctx context.Context, user, id int64) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -194,7 +224,7 @@ func (s *Store) RevealAnswer(ctx context.Context, user, id int64) (string, error
 	defer tx.Rollback(ctx)
 
 	var answer string
-	err = tx.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&answer)
+	err = tx.QueryRow(ctx, `SELECT answer FROM soups WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR UPDATE`, id).Scan(&answer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -227,12 +257,28 @@ func (s *Store) SetRelation(ctx context.Context, table string, user, target int6
 	if table != "soup_likes" && table != "soup_bookmarks" {
 		return errors.New("无效的关系表")
 	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// 与后台隐藏和作者删除共用题目行锁，检查后不能在下架题目上写入关系。
+	var visibleID int64
+	err = tx.QueryRow(ctx, `SELECT id FROM soups WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR SHARE`, target).Scan(&visibleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
 	query := `DELETE FROM ` + table + ` WHERE user_id=$1 AND soup_id=$2`
 	if add {
 		query = `INSERT INTO ` + table + `(user_id,soup_id) VALUES($1,$2) ON CONFLICT DO NOTHING`
 	}
-	_, err := s.db.Exec(ctx, query, user, target)
-	return err
+	if _, err := tx.Exec(ctx, query, user, target); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // 评论按 ID 倒序翻页，新评论插入时不会挤动下一页的游标。
@@ -240,7 +286,9 @@ func (s *Store) ListComments(ctx context.Context, soup, before int64) ([]Comment
 	rows, err := s.db.Query(ctx, `SELECT c.id,c.author_id,u.username,
 		CASE WHEN c.spoiler THEN '' ELSE c.body END,c.spoiler,c.created_at
 		FROM comments c JOIN users u ON u.id=c.author_id
-		WHERE c.soup_id=$1 AND ($2=0 OR c.id<$2)
+		JOIN soups s ON s.id=c.soup_id
+		WHERE c.soup_id=$1 AND s.deleted_at IS NULL AND s.hidden_at IS NULL
+		AND ($2=0 OR c.id<$2)
 		ORDER BY c.id DESC LIMIT 100`, soup, before)
 	if err != nil {
 		return nil, err
@@ -258,8 +306,43 @@ func (s *Store) ListComments(ctx context.Context, soup, before int64) ([]Comment
 }
 
 func (s *Store) AddComment(ctx context.Context, soup, author int64, body string, spoiler bool) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO comments(soup_id,author_id,body,spoiler) VALUES($1,$2,$3,$4)`, soup, author, body, spoiler)
-	return err
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockPublisher(ctx, tx, author); err != nil {
+		return err
+	}
+	// 与管理员隐藏和作者删除互斥，避免检查后向已下架题目写入评论。
+	var visibleID int64
+	err = tx.QueryRow(ctx, `SELECT id FROM soups WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR SHARE`, soup).Scan(&visibleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	retry := 0
+	for _, rule := range []struct{ seconds, max int }{{300, 30}, {3600, 120}} {
+		wait, err := publicationWait(ctx, tx, "comments", author, rule.seconds, rule.max)
+		if err != nil {
+			return err
+		}
+		if wait > retry {
+			retry = wait
+		}
+	}
+	if retry > 0 {
+		return &PublishLimitError{RetrySeconds: retry}
+	}
+	// 插入时间和限额检查取同一类数据库语句时钟，等待行锁时不会回拨窗口。
+	_, err = tx.Exec(ctx, `INSERT INTO comments(soup_id,author_id,body,spoiler,created_at)
+		VALUES($1,$2,$3,$4,statement_timestamp())`, soup, author, body, spoiler)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // 剧透正文只由显式展开接口读取，普通评论列表始终留空。

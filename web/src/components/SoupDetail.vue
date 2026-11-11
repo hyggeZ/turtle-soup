@@ -69,7 +69,7 @@ async function load() {
     const nextSoup = await request(`/api/soups/${id}`)
     if (!isCurrent(id, version)) return
     soup.value = nextSoup
-    await loadComments(id, version)
+    if (!nextSoup.hidden) await loadComments(id, version)
   } catch (cause) {
     if (isCurrent(id, version)) error.value = cause.message
   } finally {
@@ -154,41 +154,45 @@ onUnmounted(() => { loadVersion++ })
 <template>
   <section class="panel" v-if="soup">
     <button class="text-button" @click="emit('back')">← 返回广场</button><h2>{{ soup.title }}</h2>
+    <p v-if="soup.hidden" class="muted" role="status">题目已被管理员隐藏，仅作者可查看。暂时不能编辑、互动或用于新对局；你仍可删除它。</p>
     <p class="meta">{{ soup.genre }} · 难度 {{ soup.difficulty }}/5 · 恐怖 {{ soup.horror }}/5 · <button class="text-button" @click="emit('profile', soup.authorId)">@{{ soup.author }}</button></p>
     <p class="surface full">{{ soup.surface }}</p>
-    <div class="actions"><button v-if="user" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
+    <div v-if="!soup.hidden" class="actions"><button v-if="user" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
       <button v-if="user" @click="toggle('bookmark', soup.bookmarked)">{{ soup.bookmarked ? '★ 已收藏' : '☆ 收藏' }} {{ soup.bookmarks }}</button>
       <button v-if="user && !answer" @click="showAnswer">查看汤底</button>
       <button v-if="user" @click="emit('play', soup.id)">用此题建房</button>
       <button @click="emit('solo', soup.id)">单人试玩</button></div>
     <div v-if="isAuthor" class="author-actions">
-      <button class="small-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>
+      <button v-if="soup.hidden && !answer" class="small-button" @click="showAnswer">查看汤底</button>
+      <button v-if="!soup.hidden" class="small-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>
       <button class="small-button" :disabled="deleting" @click="deleteSoup">{{ deleting ? '正在删除…' : '删除题目' }}</button>
     </div>
     <p v-if="!user" class="muted">登录后可互动或查看汤底。</p>
     <div v-if="answer" class="answer"><h3>汤底</h3><p>{{ answer }}</p></div>
-    <h3>评论 {{ soup.comments }}</h3>
-    <form v-if="user" @submit.prevent="addComment">
-      <textarea v-model="comment" rows="3" maxlength="500" placeholder="写下你的想法" required></textarea>
-      <label class="check-line"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label>
-      <button :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button>
-    </form>
-    <p v-if="commentsBusy && !comments.length" role="status" class="muted">正在加载评论…</p>
-    <p v-else-if="!comments.length && !commentsError" class="muted">还没有评论。</p>
-    <div v-for="item in comments" :key="item.id" class="comment">
-      <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
-      <p v-if="item.spoiler && !item.body" class="muted">
-        剧透评论
-        <button v-if="user" class="text-button" @click="showComment(item)">展开</button>
-        <span v-else>· 登录后可查看</span>
-      </p>
-      <p v-else>{{ item.body }}</p>
-    </div>
-    <div v-if="commentsError" role="alert">
-      <p>{{ commentsError }}</p>
-      <button v-if="!comments.length" class="small-button" @click="loadComments(props.id, loadVersion)">重试加载评论</button>
-    </div>
-    <button v-if="hasMoreComments" class="small-button" :disabled="commentsBusy" @click="loadMoreComments">{{ commentsBusy ? '正在加载…' : '加载更多评论' }}</button>
+    <template v-if="!soup.hidden">
+      <h3>评论 {{ soup.comments }}</h3>
+      <form v-if="user" @submit.prevent="addComment">
+        <textarea v-model="comment" rows="3" maxlength="500" placeholder="写下你的想法" required></textarea>
+        <label class="check-line"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label>
+        <button :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button>
+      </form>
+      <p v-if="commentsBusy && !comments.length" role="status" class="muted">正在加载评论…</p>
+      <p v-else-if="!comments.length && !commentsError" class="muted">还没有评论。</p>
+      <div v-for="item in comments" :key="item.id" class="comment">
+        <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
+        <p v-if="item.spoiler && !item.body" class="muted">
+          剧透评论
+          <button v-if="user" class="text-button" @click="showComment(item)">展开</button>
+          <span v-else>· 登录后可查看</span>
+        </p>
+        <p v-else>{{ item.body }}</p>
+      </div>
+      <div v-if="commentsError" role="alert">
+        <p>{{ commentsError }}</p>
+        <button v-if="!comments.length" class="small-button" @click="loadComments(props.id, loadVersion)">重试加载评论</button>
+      </div>
+      <button v-if="hasMoreComments" class="small-button" :disabled="commentsBusy" @click="loadMoreComments">{{ commentsBusy ? '正在加载…' : '加载更多评论' }}</button>
+    </template>
     <p v-if="error" role="alert">{{ error }}</p>
   </section>
   <section v-else class="panel">

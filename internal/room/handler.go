@@ -25,6 +25,9 @@ type Handler struct {
 func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
 	return &Handler{db: db, auth: auth, liveHub: newLiveHub(), codes: newCodeLimiter()}
 }
+
+// NotifyRoom 只推送状态已变化的提示，具体内容仍由成员鉴权快照读取。
+func (h *Handler) NotifyRoom(id int64) { h.liveHub.notify(id) }
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/rooms", h.list)
 	r.GET("/api/rooms/mine", h.listMine)
@@ -112,13 +115,13 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	if owned >= maxOwnedRooms {
-		c.JSON(http.StatusConflict, gin.H{"error": "未结束的自建房间已达 5 个，请先关闭等待中的房间"})
+		c.JSON(http.StatusConflict, gin.H{"error": "未结束的自建房间已达 5 个，请先完成对局或关闭等待中的房间"})
 		return
 	}
 	var title, surface, answer, genre string
 	var authorID int64
 	var difficulty, horror int
-	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, in.SoupID).Scan(&authorID, &title, &surface, &answer, &genre, &difficulty, &horror)
+	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,title,surface,answer,genre,difficulty,horror FROM soups WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR UPDATE`, in.SoupID).Scan(&authorID, &title, &surface, &answer, &genre, &difficulty, &horror)
 	if errors.Is(e, pgx.ErrNoRows) {
 		c.JSON(404, gin.H{"error": "题目不存在"})
 		return

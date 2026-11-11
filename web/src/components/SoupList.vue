@@ -55,6 +55,7 @@ onMounted(load)
       <button class="entry-title" @click="emit('open', item.id)">{{ item.title }}</button>
       <p class="surface entry-preview">{{ item.surface }}</p>
       <div class="entry-tags">
+        <span v-if="item.hidden">已隐藏 · 仅作者可见</span>
         <span>{{ item.genre }}</span>
         <span>难度 {{ item.difficulty }}/5</span>
         <span>恐怖 {{ item.horror }}/5</span>

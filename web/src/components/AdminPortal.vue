@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 import { send } from '../api'
 import AdminPanel from './AdminPanel.vue'
+import ContentPanel from './ContentPanel.vue'
 import TelemetryPanel from './TelemetryPanel.vue'
 
 defineProps({ user: { type: Object, default: null } })
@@ -10,9 +11,9 @@ const emit = defineEmits(['logged-in', 'logout'])
 const username = ref('')
 const password = ref('')
 const error = ref('')
-// 后续后台页面在这里增加导航项，再接入对应的内容组件。
 const pages = [
   { id: 'users', title: '账号管理' },
+  { id: 'content', title: '题目管理' },
   { id: 'telemetry', title: '运行日志' },
 ]
 const page = ref('users')
@@ -52,6 +53,7 @@ async function login() {
       </header>
       <main class="admin-main">
         <AdminPanel v-if="page === 'users'" :role="user.role" />
+        <ContentPanel v-else-if="page === 'content'" />
         <TelemetryPanel v-else-if="page === 'telemetry'" />
       </main>
     </div>

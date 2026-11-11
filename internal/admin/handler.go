@@ -18,14 +18,18 @@ import (
 )
 
 type Handler struct {
-	db      *pgxpool.Pool
-	auth    *account.Handler
-	monitor *telemetry.Store
+	db         *pgxpool.Pool
+	auth       *account.Handler
+	monitor    *telemetry.Store
+	notifyRoom func(int64)
 }
 
 func NewHandler(db *pgxpool.Pool, auth *account.Handler, monitor *telemetry.Store) *Handler {
 	return &Handler{db: db, auth: auth, monitor: monitor}
 }
+
+// SetRoomNotifier 让后台隐藏题目后通知同进程的房间页面刷新。
+func (h *Handler) SetRoomNotifier(notify func(int64)) { h.notifyRoom = notify }
 
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/admin/users", h.list)
@@ -33,6 +37,8 @@ func (h *Handler) Register(r *gin.Engine) {
 	r.PATCH("/api/admin/users/:id", h.update)
 	r.GET("/api/admin/telemetry", h.telemetry)
 	r.GET("/api/admin/ai-metrics", h.aiMetrics)
+	r.GET("/api/admin/soups", h.listSoups)
+	r.PATCH("/api/admin/soups/:id", h.moderateSoup)
 }
 
 // 日志统计只对后台账号开放，返回路由与耗时，不暴露请求体。
