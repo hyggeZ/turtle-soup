@@ -25,8 +25,23 @@ func NewHandler(store *Store, auth *account.Handler, decider Decider) *Handler {
 
 func (h *Handler) Register(router *gin.Engine) {
 	router.POST("/api/ai/solo", h.create)
+	router.GET("/api/ai/solo/mine", h.listMine)
 	router.GET("/api/ai/solo/:id", h.get)
 	router.POST("/api/ai/solo/:id/actions", h.action)
+}
+
+// 单人局找回入口只列出当前账号的有限概要，详情仍走按 ID 鉴权接口。
+func (h *Handler) listMine(c *gin.Context) {
+	user, ok := h.user(c)
+	if !ok {
+		return
+	}
+	items, err := h.store.ListMine(c.Request.Context(), user)
+	if err != nil {
+		h.replyError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, items)
 }
 
 func (h *Handler) user(c *gin.Context) (int64, bool) {
@@ -242,7 +257,7 @@ func (h *Handler) replyError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "题目或对局不存在"})
-	case errors.Is(err, ErrKnownAnswer), errors.Is(err, ErrPlaying), errors.Is(err, ErrBusy), errors.Is(err, ErrFinished), errors.Is(err, ErrLimit), errors.Is(err, ErrOperationMismatch):
+	case errors.Is(err, ErrKnownAnswer), errors.Is(err, ErrPlaying), errors.Is(err, ErrBusy), errors.Is(err, ErrFinished), errors.Is(err, ErrLimit), errors.Is(err, ErrActiveGamesLimit), errors.Is(err, ErrOperationMismatch):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrDailyLimit):
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})

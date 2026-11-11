@@ -62,10 +62,11 @@ async function logout() {
   if (user.value) {
     sessionStorage.removeItem(`turtle_solo_action_${user.value.id}`)
     sessionStorage.removeItem(roomViewKey(user.value.id))
-    const prefix = `turtle_room_action_${user.value.id}_`
+    const roomPrefix = `turtle_room_action_${user.value.id}_`
+    const soloPrefix = `turtle_solo_action_${user.value.id}_`
     for (let i = sessionStorage.length - 1; i >= 0; i--) {
       const key = sessionStorage.key(i)
-      if (key?.startsWith(prefix)) sessionStorage.removeItem(key)
+      if (key?.startsWith(roomPrefix) || key?.startsWith(soloPrefix)) sessionStorage.removeItem(key)
     }
   }
   user.value = null

@@ -31,6 +31,7 @@ func (h *Handler) NotifyRoom(id int64) { h.liveHub.notify(id) }
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/rooms", h.list)
 	r.GET("/api/rooms/mine", h.listMine)
+	r.GET("/api/rooms/mine/history", h.listMineHistory)
 	r.POST("/api/rooms", h.create)
 	r.POST("/api/rooms/join", h.join)
 	r.GET("/api/rooms/:id", h.get)
@@ -229,7 +230,7 @@ func (h *Handler) list(c *gin.Context) {
 	c.JSON(200, items)
 }
 
-// 我的房间只返回当前成员可继续进入的房间概要，不包含汤底、事件或房间码。
+// 我的房间保留旧接口行为；历史记录另由 /mine/history 分页读取。
 func (h *Handler) listMine(c *gin.Context) {
 	u, ok := h.user(c)
 	if !ok {
@@ -246,22 +247,8 @@ func (h *Handler) listMine(c *gin.Context) {
 		return
 	}
 	defer rows.Close()
-	items := make([]gin.H, 0)
-	for rows.Next() {
-		var id int64
-		var mode, status, title, genre, role string
-		var max, difficulty, horror int
-		var players int64
-		var public bool
-		if err := rows.Scan(&id, &mode, &status, &max, &public, &title, &genre, &difficulty, &horror, &role, &players); err != nil {
-			fail(c, err)
-			return
-		}
-		items = append(items, gin.H{"id": id, "mode": mode, "status": status, "maxPlayers": max,
-			"public": public, "title": title, "genre": genre, "difficulty": difficulty,
-			"horror": horror, "myRole": role, "players": players})
-	}
-	if err := rows.Err(); err != nil {
+	items, err := scanRoomSummaries(rows)
+	if err != nil {
 		fail(c, err)
 		return
 	}

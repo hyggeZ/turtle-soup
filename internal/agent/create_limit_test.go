@@ -75,7 +75,7 @@ func TestConcurrentCreateHasFiveGameLimit(t *testing.T) {
 		case item.err == nil:
 			accepted++
 			first = item
-		case errors.Is(item.err, ErrLimit):
+		case errors.Is(item.err, ErrActiveGamesLimit):
 			rejected++
 		default:
 			t.Fatalf("并发开局失败：%v", item.err)

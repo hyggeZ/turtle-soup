@@ -15,6 +15,7 @@ var ErrPlaying = errors.New("正在参与这道题的真人对局")
 var ErrBusy = errors.New("上一条操作仍在处理")
 var ErrFinished = errors.New("对局已结束")
 var ErrLimit = errors.New("本局操作次数已达到上限")
+var ErrActiveGamesLimit = errors.New("同时进行的单人对局已达 5 局，请先完成一局")
 var ErrDailyLimit = errors.New("今日 AI 调用次数已达到上限")
 var ErrOperationMismatch = errors.New("操作 ID 已用于其他内容")
 
@@ -110,7 +111,7 @@ func (s *Store) Create(ctx context.Context, user, soupID int64) (int64, error) {
 		return 0, err
 	}
 	if active >= 5 {
-		return 0, ErrLimit
+		return 0, ErrActiveGamesLimit
 	}
 	var id int64
 	err = tx.QueryRow(ctx, `INSERT INTO ai_games(user_id,soup_id,title,surface,answer) VALUES($1,$2,$3,$4,$5) RETURNING id`, user, soupID, soup.Title, soup.Surface, soup.Answer).Scan(&id)

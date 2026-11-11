@@ -184,4 +184,84 @@ func TestMyRoomsOnlyShowsMembership(t *testing.T) {
 	if response := get(fmt.Sprintf("/api/rooms/%d", newest), otherCookie); response.Code != http.StatusNotFound {
 		t.Fatalf("其他账号读取私密房间成功：%d %s", response.Code, response.Body.String())
 	}
+
+	// 历史记录独立分页，正在进行的 50 间房不会挤掉已结束记录。
+	if response := get("/api/rooms/mine/history", nil); response.Code != http.StatusUnauthorized {
+		t.Fatalf("未登录读取房间历史：%d", response.Code)
+	}
+	for i := 0; i < 52; i++ {
+		addRoom(owner, "finished", false, owner)
+	}
+	closed := addRoom(owner, "closed", false, owner)
+	foreignFinished := addRoom(other, "finished", false, other)
+	historyResponse := get("/api/rooms/mine/history", ownerCookie)
+	if historyResponse.Code != http.StatusOK {
+		t.Fatalf("本人历史读取失败：%d %s", historyResponse.Code, historyResponse.Body.String())
+	}
+	var history []map[string]json.RawMessage
+	if err := json.Unmarshal(historyResponse.Body.Bytes(), &history); err != nil || len(history) != 50 {
+		t.Fatalf("历史首批数量错误：count=%d err=%v", len(history), err)
+	}
+	seenHistory := make(map[int64]bool)
+	for _, item := range history {
+		var id int64
+		var status string
+		if err := json.Unmarshal(item["id"], &id); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(item["status"], &status); err != nil || status != "finished" && status != "closed" {
+			t.Fatalf("历史状态错误：id=%d status=%q err=%v", id, status, err)
+		}
+		if seenHistory[id] || id == foreign || id == foreignFinished || id == public || id == newest {
+			t.Fatalf("历史重复或越权：%d", id)
+		}
+		seenHistory[id] = true
+		for _, private := range []string{"code", "answer", "events", "surface"} {
+			if _, exists := item[private]; exists {
+				t.Fatalf("历史列表包含私有字段 %s", private)
+			}
+		}
+	}
+	if !seenHistory[closed] || seenHistory[finished] {
+		t.Fatalf("历史首批排序错误：closed=%v finished=%v", seenHistory[closed], seenHistory[finished])
+	}
+	var last int64
+	if err := json.Unmarshal(history[len(history)-1]["id"], &last); err != nil {
+		t.Fatal(err)
+	}
+	secondResponse := get(fmt.Sprintf("/api/rooms/mine/history?before=%d", last), ownerCookie)
+	var second []map[string]json.RawMessage
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &second); secondResponse.Code != http.StatusOK || err != nil || len(second) != 4 {
+		t.Fatalf("历史下一批错误：status=%d count=%d err=%v", secondResponse.Code, len(second), err)
+	}
+	for _, item := range second {
+		var id int64
+		if err := json.Unmarshal(item["id"], &id); err != nil || seenHistory[id] {
+			t.Fatalf("历史翻页重复：id=%d err=%v", id, err)
+		}
+		seenHistory[id] = true
+	}
+	if !seenHistory[finished] {
+		t.Fatal("较早的已结束房间无法翻页找回")
+	}
+	for _, invalid := range []string{"?before=0", "?before=bad", "?before="} {
+		if response := get("/api/rooms/mine/history"+invalid, ownerCookie); response.Code != http.StatusBadRequest {
+			t.Fatalf("无效游标未拒绝：%q => %d", invalid, response.Code)
+		}
+	}
+	otherHistory := get("/api/rooms/mine/history", otherCookie)
+	var otherItems []map[string]json.RawMessage
+	if err := json.Unmarshal(otherHistory.Body.Bytes(), &otherItems); otherHistory.Code != http.StatusOK || err != nil || len(otherItems) != 1 {
+		t.Fatalf("其他账号的历史错误：status=%d count=%d err=%v", otherHistory.Code, len(otherItems), err)
+	}
+	var otherID int64
+	if err := json.Unmarshal(otherItems[0]["id"], &otherID); err != nil || otherID != foreignFinished {
+		t.Fatalf("历史列表跨账号泄露：id=%d err=%v", otherID, err)
+	}
+	if response := get(fmt.Sprintf("/api/rooms/%d", finished), ownerCookie); response.Code != http.StatusOK {
+		t.Fatalf("本人不能回看已结束房间：%d", response.Code)
+	}
+	if response := get(fmt.Sprintf("/api/rooms/%d", finished), otherCookie); response.Code != http.StatusNotFound {
+		t.Fatalf("其他账号读取私密历史房间：%d", response.Code)
+	}
 }

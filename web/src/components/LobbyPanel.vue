@@ -8,15 +8,21 @@ const props = defineProps({ user: { type: Object, default: null }, initialSoupId
 const emit = defineEmits(['room', 'login'])
 const rooms = ref([])
 const mine = ref([])
+const history = ref([])
 const code = ref(props.initialCode)
 const error = ref('')
+const historyError = ref('')
 const loading = ref(false)
+const loadingHistory = ref(false)
 const loadingMore = ref(false)
+const loadingMoreHistory = ref(false)
 const hasMoreRooms = ref(false)
+const hasMoreHistory = ref(false)
 const moreError = ref('')
 const busy = ref(false)
 const form = reactive({ soupId: props.initialSoupId, mode: 'casual', maxPlayers: 6, public: true, hostSelf: true })
 let loadVersion = 0
+let historyVersion = 0
 
 async function load() {
   const version = ++loadVersion
@@ -33,13 +39,59 @@ async function load() {
     if (version !== loadVersion || props.user?.id !== userId) return
     rooms.value = publicRooms
     hasMoreRooms.value = publicRooms.length === 50
-    mine.value = ownRooms
+    // 旧接口仍返回已关闭房间；页面统一把它放到独立的历史区。
+    mine.value = ownRooms.filter(room => room.status !== 'closed')
     error.value = ''
   } catch (cause) {
     if (version === loadVersion) error.value = cause.message
   } finally {
     if (version === loadVersion) loading.value = false
   }
+}
+
+async function loadHistory() {
+  const version = ++historyVersion
+  const userId = props.user?.id
+  history.value = []
+  hasMoreHistory.value = false
+  historyError.value = ''
+  loadingMoreHistory.value = false
+  loadingHistory.value = !!userId
+  if (!userId) return
+  try {
+    const next = await request('/api/rooms/mine/history')
+    if (version !== historyVersion || props.user?.id !== userId) return
+    history.value = next
+    hasMoreHistory.value = next.length === 50
+  } catch (cause) {
+    if (version === historyVersion) historyError.value = cause.message
+  } finally {
+    if (version === historyVersion) loadingHistory.value = false
+  }
+}
+
+async function loadMoreHistory() {
+  if (loadingHistory.value || loadingMoreHistory.value || !hasMoreHistory.value || !history.value.length) return
+  const version = historyVersion
+  const last = history.value.at(-1)
+  loadingMoreHistory.value = true
+  historyError.value = ''
+  try {
+    const next = await request(`/api/rooms/mine/history?before=${last.id}`)
+    if (version !== historyVersion) return
+    const seen = new Set(history.value.map(room => room.id))
+    history.value = [...history.value, ...next.filter(room => !seen.has(room.id))]
+    hasMoreHistory.value = next.length === 50
+  } catch (cause) {
+    if (version === historyVersion) historyError.value = cause.message
+  } finally {
+    if (version === historyVersion) loadingMoreHistory.value = false
+  }
+}
+
+function refresh() {
+  load()
+  loadHistory()
 }
 
 // 公开房间按末条 ID 加载更早的页面，刷新会重新从第一页开始。
@@ -89,15 +141,15 @@ async function create() {
   }
 }
 
-watch(() => props.user?.id, load, { immediate: true })
-onUnmounted(() => { loadVersion++ })
+watch(() => props.user?.id, refresh, { immediate: true })
+onUnmounted(() => { loadVersion++; historyVersion++ })
 </script>
 
 <template>
   <section class="panel lobby-page">
     <div class="section-head">
       <h1>房间大厅</h1>
-      <button class="text-button" :disabled="loading" @click="load">刷新</button>
+      <button class="text-button" :disabled="loading || loadingHistory" @click="refresh">刷新</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
     <form class="inline-form" @submit.prevent="join(code)">
@@ -107,19 +159,42 @@ onUnmounted(() => { loadVersion++ })
 
     <section v-if="user" class="lobby-section">
       <h2>我的房间</h2>
-      <p v-if="!mine.length && !loading" class="empty-state">暂无房间。</p>
+      <p v-if="!mine.length && !loading" class="empty-state">暂无进行中的房间。</p>
       <article v-for="room in mine" :key="room.id" class="room-row">
         <div>
           <strong>{{ room.title }}</strong>
           <p class="meta">
             {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : room.status === 'closed' ? '已关闭' : '进行中' }} ·
+            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : '进行中' }} ·
             {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
             玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
           </p>
         </div>
-        <button class="small-button" @click="emit('room', room.id)">{{ room.status === 'closed' ? '查看' : '进入' }}</button>
+        <button class="small-button" @click="emit('room', room.id)">进入</button>
       </article>
+    </section>
+
+    <section v-if="user" class="lobby-section">
+      <h2>房间记录</h2>
+      <p v-if="!history.length && !loadingHistory && !historyError" class="empty-state">暂无已结束或已关闭的房间。</p>
+      <article v-for="room in history" :key="room.id" class="room-row">
+        <div>
+          <strong>{{ room.title }}</strong>
+          <p class="meta">
+            {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
+            {{ room.status === 'finished' ? '已结束' : '已关闭' }} ·
+            {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
+            玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
+          </p>
+        </div>
+        <button class="small-button" @click="emit('room', room.id)">回看</button>
+      </article>
+      <p v-if="loadingHistory" role="status" class="muted">正在加载房间记录…</p>
+      <p v-if="historyError" role="alert">{{ historyError }}</p>
+      <button v-if="!history.length && historyError" class="small-button" @click="loadHistory">重试</button>
+      <button v-if="hasMoreHistory" class="small-button" :disabled="loadingMoreHistory" @click="loadMoreHistory">
+        {{ loadingMoreHistory ? '正在加载…' : historyError ? '重试加载更多' : '加载更多记录' }}
+      </button>
     </section>
 
     <section class="lobby-section">
