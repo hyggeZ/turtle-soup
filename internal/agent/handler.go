@@ -177,12 +177,12 @@ func (h *Handler) action(c *gin.Context) {
 		decision.Result = "已查看汤底"
 	} else {
 		started := time.Now()
-		endModel := telemetry.Begin(c.Request.Context(), "ai.model")
+		endDecision := telemetry.Begin(c.Request.Context(), "ai.decision")
 		decision, err = h.decide(c.Request.Context(), id, claim.Soup, input)
-		endModel()
 		if err == nil && !validDecision(input.Type, decision.Result) {
 			err = ErrInvalidOutput
 		}
+		endDecision()
 		model := decision.Model
 		if qwen, ok := h.decider.(*Qwen); ok && model == "" {
 			model = qwen.Model

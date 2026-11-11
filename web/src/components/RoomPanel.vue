@@ -26,6 +26,7 @@ let refreshTimer
 let clockTimer
 let active = false
 let loadVersion = 0
+let eventCursor = 0
 let lastLoadedAt = 0
 let expiredChecked = ''
 
@@ -42,26 +43,49 @@ const replied = computed(() => new Set((room.value?.events || []).filter(item =>
 const pendingRestore = computed(() => room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
 const pendingAnswer = computed(() => room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
 
+// 新回答可能让旧问题首次公开，补发事件需要按 ID 插回原位置。
+function mergeEvents(previous, incoming) {
+  const byId = new Map(previous.map(event => [event.id, event]))
+  for (const event of incoming) byId.set(event.id, event)
+  return [...byId.values()].sort((a, b) => a.id - b.id)
+}
+
 async function load() {
   const id = props.id
   const version = ++loadVersion
+  const after = room.value?.id === id ? eventCursor : 0
   const sentAt = Date.now()
   try {
-    const next = await request(`/api/rooms/${id}`)
+    const path = `/api/rooms/${id}${after ? `?after=${after}` : ''}`
+    const next = await request(path)
     if (!active || props.id !== id || version !== loadVersion) return
+    if (!Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after) {
+      throw new Error('房间事件数据无效，请重试')
+    }
+    if (after && next.myRole !== room.value.myRole) {
+      // 身份变化会改变可见历史，重新读取全量记录以清除旧权限内容。
+      room.value = null
+      eventCursor = 0
+      load()
+      return
+    }
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
     if (next.turnDeadline !== room.value?.turnDeadline) expiredChecked = ''
-    room.value = next
+    const events = after ? mergeEvents(room.value.events, next.events) : next.events
+    room.value = { ...next, events }
+    eventCursor = next.eventCursor
     lastLoadedAt = performance.now()
     error.value = ''
-    if (!socket) connect()
+    if (next.status === 'closed') closeSocket()
+    else if (!socket) connect()
   } catch (cause) {
     if (!active || props.id !== id || version !== loadVersion) return
     lastLoadedAt = 0
     error.value = cause.message
     if ([401, 403, 404].includes(cause.status)) {
       room.value = null
+      eventCursor = 0
       closeSocket()
     }
   }
@@ -156,6 +180,10 @@ function retire() {
   if (window.confirm('退出玩家席位后，本局只能旁观。确定退出吗？')) act('retire')
 }
 
+function closeRoom() {
+  if (window.confirm('关闭后不能继续加入或开始游戏，房间记录会保留。确定关闭吗？')) act('close')
+}
+
 async function copyCode() {
   try {
     await navigator.clipboard.writeText(room.value.code)
@@ -190,6 +218,7 @@ function connect() {
 function resetRoom() {
   closeSocket()
   room.value = null
+  eventCursor = 0
   lastLoadedAt = 0
   clockOffset.value = 0
   everConnected.value = false
@@ -199,7 +228,6 @@ function resetRoom() {
   expiredChecked = ''
   restoreAction()
   load()
-  connect()
 }
 
 onMounted(() => {
@@ -207,6 +235,7 @@ onMounted(() => {
   resetRoom()
   // 实时连接断开时每 10 秒补查；连接正常时每 60 秒校准一次。
   refreshTimer = setInterval(() => {
+    if (room.value?.status === 'closed') return
     if (!connected.value || performance.now() - lastLoadedAt >= 60000) load()
   }, 10000)
   clockTimer = setInterval(() => {
@@ -224,7 +253,7 @@ onUnmounted(() => {
   clearInterval(refreshTimer)
   clearInterval(clockTimer)
 })
-watch(() => props.id, resetRoom)
+watch(() => [props.id, props.user?.id], resetRoom)
 watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', value => emit('hosting', !!value), { immediate: true })
 </script>
 
@@ -240,7 +269,7 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
       <span>上次操作结果尚未确认，重试会沿用同一操作 ID。</span>
       <button class="small-button" @click="retryAction">重试上次操作</button>
     </div>
-    <p v-if="room && !connected" class="room-connection">{{ everConnected ? '实时连接中断，正在重连；页面仍会定期更新。' : '正在建立实时连接，页面仍会定期更新。' }}</p>
+    <p v-if="room && room.status !== 'closed' && !connected" class="room-connection">{{ everConnected ? '实时连接中断，正在重连；页面仍会定期更新。' : '正在建立实时连接，页面仍会定期更新。' }}</p>
 
     <template v-if="room">
       <div class="room-summary">
@@ -252,7 +281,7 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
         </div>
         <p class="meta">
           {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-          {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : '已结束' }}
+          {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : room.status === 'closed' ? '已关闭' : '已结束' }}
         </p>
         <p class="meta">{{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5 · 玩家 {{ playerCount }}/{{ room.maxPlayers }}</p>
         <p class="surface">{{ room.surface }}</p>
@@ -278,10 +307,16 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
           <template v-if="room.ownerId === user?.id">
             <button v-for="member in room.members.filter(item => item.hostRequest && item.id !== room.ownerId)" :key="member.id" class="small-button" :disabled="locked" @click="act('host_approve', { userId: member.id })">同意 {{ member.username }} 主持</button>
             <button class="small-button" :disabled="locked" @click="editing = !editing">{{ editing ? '收起设置' : '修改设置' }}</button>
+            <button class="small-button" :disabled="locked" @click="closeRoom">关闭房间</button>
           </template>
           <button v-if="(room.ownerId === user?.id || room.myRole === 'host') && room.hostId && playerCount" class="primary-button" :disabled="locked" @click="act('start')">开始游戏</button>
         </div>
         <RoomSettings v-if="editing && room.ownerId === user?.id" :room="room" @saved="editing = false; load()" @close="editing = false" />
+      </section>
+
+      <section v-if="room.status === 'closed'" class="room-result">
+        <h3>房间已关闭</h3>
+        <p>房主在开局前关闭了房间，成员和房间记录仍可查看。</p>
       </section>
 
       <section v-if="room.status === 'paused'" class="room-paused">

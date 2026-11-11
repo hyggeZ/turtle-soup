@@ -20,6 +20,13 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		return err
 	}
 	switch in.Type {
+	case "close":
+		if status != "waiting" || user != owner {
+			return bad()
+		}
+		// 只关闭未开始的房间，保留成员和操作记录以供回看。
+		_, err := tx.Exec(ctx, `UPDATE rooms SET status='closed',closed_at=NOW() WHERE id=$1`, id)
+		return "房间已关闭", err
 	case "host_request":
 		if status != "waiting" || role == "host" {
 			return bad()

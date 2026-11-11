@@ -8,16 +8,30 @@ const emit = defineEmits(['open', 'profile'])
 const items = ref([])
 const page = ref(1)
 const error = ref('')
+const loading = ref(false)
+let loadVersion = 0
 
 async function load() {
+  const version = ++loadVersion
+  loading.value = true
+  items.value = []
+  error.value = ''
   try {
     const query = new URLSearchParams({ page: String(page.value) })
     if (props.author) query.set('author', String(props.author))
-    items.value = await request(`/api/soups?${query}`)
-    error.value = ''
+    const next = await request(`/api/soups?${query}`)
+    if (version === loadVersion) items.value = next
   } catch (cause) {
-    error.value = cause.message
+    if (version === loadVersion) error.value = cause.message
+  } finally {
+    if (version === loadVersion) loading.value = false
   }
+}
+
+function changePage(next) {
+  if (loading.value) return
+  page.value = next
+  load()
 }
 
 watch(() => [props.author, props.refresh], () => { page.value = 1; load() })
@@ -30,8 +44,12 @@ onMounted(load)
       <h2>{{ author ? '发布的汤' : '最新发布' }}</h2>
       <span class="feed-count">第 {{ page }} 页</span>
     </div>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="!items.length && !error" class="empty-state">还没有汤题。</p>
+    <div v-if="error" role="alert">
+      <p>{{ error }}</p>
+      <button class="small-button" @click="load">重试</button>
+    </div>
+    <p v-if="loading" role="status" class="empty-state">正在加载汤题…</p>
+    <p v-else-if="!items.length && !error" class="empty-state">还没有汤题。</p>
 
     <article v-for="item in items" :key="item.id" class="soup-entry">
       <button class="entry-title" @click="emit('open', item.id)">{{ item.title }}</button>
@@ -52,9 +70,9 @@ onMounted(load)
     </article>
 
     <div class="pager">
-      <button :disabled="page === 1" @click="page--; load()">上一页</button>
+      <button :disabled="loading || page === 1" @click="changePage(page - 1)">上一页</button>
       <span>第 {{ page }} 页</span>
-      <button :disabled="items.length < 20" @click="page++; load()">下一页</button>
+      <button :disabled="loading || items.length < 20" @click="changePage(page + 1)">下一页</button>
     </div>
   </section>
 </template>

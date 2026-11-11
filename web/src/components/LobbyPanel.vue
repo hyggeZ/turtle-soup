@@ -1,6 +1,6 @@
 <script setup>
 // 大厅展示公开房间和我已加入的房间；房间码可以进入未公开的房间。
-import { reactive, ref, watch } from 'vue'
+import { onUnmounted, reactive, ref, watch } from 'vue'
 import { request, send } from '../api'
 import SoupPicker from './SoupPicker.vue'
 
@@ -11,6 +11,9 @@ const mine = ref([])
 const code = ref(props.initialCode)
 const error = ref('')
 const loading = ref(false)
+const loadingMore = ref(false)
+const hasMoreRooms = ref(false)
+const moreError = ref('')
 const busy = ref(false)
 const form = reactive({ soupId: props.initialSoupId, mode: 'casual', maxPlayers: 6, public: true, hostSelf: true })
 let loadVersion = 0
@@ -19,18 +22,42 @@ async function load() {
   const version = ++loadVersion
   const userId = props.user?.id
   loading.value = true
+  loadingMore.value = false
+  hasMoreRooms.value = false
+  moreError.value = ''
+  rooms.value = []
   mine.value = []
   try {
     const publicRooms = await request('/api/rooms')
     const ownRooms = userId ? await request('/api/rooms/mine') : []
     if (version !== loadVersion || props.user?.id !== userId) return
     rooms.value = publicRooms
+    hasMoreRooms.value = publicRooms.length === 50
     mine.value = ownRooms
     error.value = ''
   } catch (cause) {
     if (version === loadVersion) error.value = cause.message
   } finally {
     if (version === loadVersion) loading.value = false
+  }
+}
+
+// 公开房间按末条 ID 加载更早的页面，刷新会重新从第一页开始。
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMoreRooms.value || !rooms.value.length) return
+  const version = loadVersion
+  const before = rooms.value.at(-1).id
+  loadingMore.value = true
+  moreError.value = ''
+  try {
+    const next = await request(`/api/rooms?before=${before}`)
+    if (version !== loadVersion) return
+    rooms.value = [...rooms.value, ...next]
+    hasMoreRooms.value = next.length === 50
+  } catch (cause) {
+    if (version === loadVersion) moreError.value = cause.message
+  } finally {
+    if (version === loadVersion) loadingMore.value = false
   }
 }
 
@@ -63,6 +90,7 @@ async function create() {
 }
 
 watch(() => props.user?.id, load, { immediate: true })
+onUnmounted(() => { loadVersion++ })
 </script>
 
 <template>
@@ -79,18 +107,18 @@ watch(() => props.user?.id, load, { immediate: true })
 
     <section v-if="user" class="lobby-section">
       <h2>我的房间</h2>
-      <p v-if="!mine.length && !loading" class="empty-state">暂无进行中的房间。</p>
+      <p v-if="!mine.length && !loading" class="empty-state">暂无房间。</p>
       <article v-for="room in mine" :key="room.id" class="room-row">
         <div>
           <strong>{{ room.title }}</strong>
           <p class="meta">
             {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : '进行中' }} ·
+            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : room.status === 'closed' ? '已关闭' : '进行中' }} ·
             {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
             玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
           </p>
         </div>
-        <button class="small-button" @click="emit('room', room.id)">进入</button>
+        <button class="small-button" @click="emit('room', room.id)">{{ room.status === 'closed' ? '查看' : '进入' }}</button>
       </article>
     </section>
 
@@ -107,6 +135,8 @@ watch(() => props.user?.id, load, { immediate: true })
         </div>
         <button class="small-button" :disabled="busy" @click="join(room.code)">{{ room.status === 'active' && room.mode === 'competitive' ? '旁观' : '进入' }}</button>
       </article>
+      <p v-if="moreError" role="alert">{{ moreError }}</p>
+      <button v-if="hasMoreRooms" class="small-button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多房间' }}</button>
     </section>
 
     <section class="lobby-section">

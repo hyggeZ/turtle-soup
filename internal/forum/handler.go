@@ -277,11 +277,20 @@ func (h *Handler) comments(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	var before int64
+	if raw := ctx.Query("before"); raw != "" {
+		var err error
+		before, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || before < 1 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "评论游标无效"})
+			return
+		}
+	}
 	if _, err := h.store.Get(ctx.Request.Context(), h.viewer(ctx), id); err != nil {
 		replyError(ctx, err)
 		return
 	}
-	items, err := h.store.ListComments(ctx.Request.Context(), id)
+	items, err := h.store.ListComments(ctx.Request.Context(), id, before)
 	if err != nil {
 		replyError(ctx, err)
 		return

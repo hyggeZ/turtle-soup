@@ -82,16 +82,17 @@ onMounted(load)
         </div>
       </section>
       <section class="admin-section">
-        <div class="admin-section-heading"><h2>AI 模型调用</h2><span>近 7 天，按模型与提示词版本统计</span></div>
-        <p v-if="!aiMetrics.length" class="muted">还没有模型调用记录。</p>
+        <div class="admin-section-heading"><h2>AI 判定尝试</h2><span>近 7 天，按模型与提示词版本统计</span></div>
+        <p class="muted">判定阶段耗时包含读取对局历史、模型请求和结果校验，不含最终落库。</p>
+        <p v-if="!aiMetrics.length" class="muted">还没有 AI 判定记录。</p>
         <div v-else class="admin-table-wrap">
           <table class="simple-table telemetry-table">
-            <thead><tr><th>模型</th><th>提示词</th><th>调用</th><th>成功</th><th>格式错误</th><th>服务错误</th><th>平均耗时</th><th>P95</th></tr></thead>
+            <thead><tr><th>模型</th><th>提示词</th><th>尝试</th><th>成功</th><th>格式错误</th><th>其他失败</th><th>平均判定耗时</th><th>判定 P95</th></tr></thead>
             <tbody>
               <tr v-for="item in aiMetrics" :key="`${item.model}:${item.promptVersion}`">
                 <td>{{ item.model }}</td><td>{{ item.promptVersion }}</td>
                 <td>{{ item.calls }}</td><td>{{ item.successes }}</td>
-                <td>{{ item.invalidOutput }}</td><td>{{ item.providerError }}</td>
+                <td>{{ item.invalidOutput }}</td><td>{{ item.otherErrors }}</td>
                 <td>{{ number(item.avgMs) }} ms</td><td>{{ number(item.p95Ms) }} ms</td>
               </tr>
             </tbody>

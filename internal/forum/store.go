@@ -235,10 +235,13 @@ func (s *Store) SetRelation(ctx context.Context, table string, user, target int6
 	return err
 }
 
-func (s *Store) ListComments(ctx context.Context, soup int64) ([]Comment, error) {
+// 评论按 ID 倒序翻页，新评论插入时不会挤动下一页的游标。
+func (s *Store) ListComments(ctx context.Context, soup, before int64) ([]Comment, error) {
 	rows, err := s.db.Query(ctx, `SELECT c.id,c.author_id,u.username,
 		CASE WHEN c.spoiler THEN '' ELSE c.body END,c.spoiler,c.created_at
-		FROM comments c JOIN users u ON u.id=c.author_id WHERE c.soup_id=$1 ORDER BY c.created_at,c.id LIMIT 100`, soup)
+		FROM comments c JOIN users u ON u.id=c.author_id
+		WHERE c.soup_id=$1 AND ($2=0 OR c.id<$2)
+		ORDER BY c.id DESC LIMIT 100`, soup, before)
 	if err != nil {
 		return nil, err
 	}

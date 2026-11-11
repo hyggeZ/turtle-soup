@@ -108,7 +108,9 @@ async function execute(entry) {
           ? cause.message || '操作结果未确认，可以重试上次操作。'
           : '网络连接中断，可以重试上次操作。'
     await loadGame(entry.gameId)
-    error.value = message
+    // 请求可能已写入成功，只是响应在途中丢失；以刷新后的事件为准。
+    const confirmed = game.value?.id === entry.gameId && completed(entry, game.value.events)
+    if (!confirmed) error.value = message
   } finally {
     clearTimeout(timeout)
     busy.value = false
@@ -127,6 +129,7 @@ function act(type, body = '') {
     operationId: crypto.randomUUID(),
     afterEventId: last?.id || 0,
   }
+  latest.value = null
   saveRetry(entry)
   execute(entry)
 }

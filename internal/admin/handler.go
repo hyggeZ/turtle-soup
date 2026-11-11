@@ -67,11 +67,21 @@ func (h *Handler) list(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索内容不能超过 50 字"})
 		return
 	}
+	var before int64
+	if raw := c.Query("before"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "账号游标无效"})
+			return
+		}
+		before = parsed
+	}
 	rows, err := h.db.Query(c.Request.Context(), `
 		SELECT id,username,role,disabled,created_at FROM users
 		WHERE username ILIKE '%' || $1 || '%'
 		AND (role='user' OR $2='super_admin')
-		ORDER BY id DESC LIMIT 100`, q, u.Role)
+		AND ($3=0 OR id<$3)
+		ORDER BY id DESC LIMIT 100`, q, u.Role, before)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "读取账号失败"})
 		return

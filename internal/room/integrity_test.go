@@ -383,6 +383,15 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	if questionID == 0 {
 		t.Fatal("主持人未看到问题")
 	}
+	var hidden struct {
+		EventCursor int64 `json:"eventCursor"`
+	}
+	if err := json.Unmarshal(observer.Body.Bytes(), &hidden); err != nil || hidden.EventCursor < questionID {
+		t.Fatalf("未回答问题后的游标错误：%+v %v", hidden, err)
+	}
+	if res := call(http.MethodGet, path+"?after=bad", nil, cookies[0]); res.Code != http.StatusBadRequest {
+		t.Fatalf("非法事件游标未被拒绝：%d", res.Code)
+	}
 	if res := action(cookies[2], "answer", "answer_001", map[string]any{"eventId": questionID, "result": "是"}); res.Code != http.StatusOK {
 		t.Fatalf("主持回答失败：%d %s", res.Code, res.Body.String())
 	}
@@ -390,12 +399,40 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	if observer.Code != http.StatusOK || !strings.Contains(observer.Body.String(), "测试问题") {
 		t.Fatalf("已回答的问题没有公开：%d %s", observer.Code, observer.Body.String())
 	}
+	changed := call(http.MethodGet, fmt.Sprintf("%s?after=%d", path, hidden.EventCursor), nil, cookies[0])
+	var delta struct {
+		EventCursor int64 `json:"eventCursor"`
+		Events      []struct {
+			Kind string `json:"kind"`
+			Body string `json:"body"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(changed.Body.Bytes(), &delta); err != nil || changed.Code != http.StatusOK ||
+		len(delta.Events) != 2 || delta.Events[0].Kind != "question" || delta.Events[0].Body != "测试问题" ||
+		delta.Events[1].Kind != "answer" || delta.EventCursor <= hidden.EventCursor {
+		t.Fatalf("回答后增量快照没有补发原问题：%d %+v %v", changed.Code, delta, err)
+	}
+	unchanged := call(http.MethodGet, fmt.Sprintf("%s?after=%d", path, delta.EventCursor), nil, cookies[0])
+	var empty struct {
+		EventCursor int64             `json:"eventCursor"`
+		Events      []json.RawMessage `json:"events"`
+	}
+	if err := json.Unmarshal(unchanged.Body.Bytes(), &empty); err != nil || unchanged.Code != http.StatusOK ||
+		len(empty.Events) != 0 || empty.EventCursor != delta.EventCursor {
+		t.Fatalf("没有新事件时游标错误：%d %+v %v", unchanged.Code, empty, err)
+	}
 	if res := action(cookies[1], "restore", "restore_001", map[string]any{"body": "私密还原内容"}); res.Code != http.StatusOK {
 		t.Fatalf("提交还原失败：%d %s", res.Code, res.Body.String())
 	}
 	observer = call(http.MethodGet, path, nil, cookies[0])
 	if observer.Code != http.StatusOK || strings.Contains(observer.Body.String(), `"kind":"restore"`) || strings.Contains(observer.Body.String(), "私密还原内容") {
 		t.Fatalf("其他玩家提前看到了私人还原：%d %s", observer.Code, observer.Body.String())
+	}
+	priorCursor := delta.EventCursor
+	changed = call(http.MethodGet, fmt.Sprintf("%s?after=%d", path, priorCursor), nil, cookies[0])
+	if err := json.Unmarshal(changed.Body.Bytes(), &delta); err != nil || changed.Code != http.StatusOK ||
+		len(delta.Events) != 0 || delta.EventCursor <= priorCursor {
+		t.Fatalf("私人还原在增量快照中泄露：%d %+v %v", changed.Code, delta, err)
 	}
 	host = call(http.MethodGet, path, nil, cookies[2])
 	var game struct {

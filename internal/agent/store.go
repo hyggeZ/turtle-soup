@@ -293,7 +293,7 @@ func (s *Store) Release(ctx context.Context, user, id int64, operationID string)
 	_, _ = s.db.Exec(ctx, `UPDATE ai_games SET busy_op=NULL,busy_until=NULL WHERE id=$1 AND user_id=$2 AND busy_op=$3`, id, user, operationID)
 }
 
-// RecordAttempt 只记录调用指标，不写入模型请求和响应内容。
+// RecordAttempt 记录整个判定阶段的耗时，不写入模型请求和响应内容。
 func (s *Store) RecordAttempt(ctx context.Context, gameID int64, kind, model string, elapsed float64, err error) {
 	errorKind := ""
 	if errors.Is(err, ErrInvalidOutput) {

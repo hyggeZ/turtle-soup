@@ -1,11 +1,16 @@
 <script setup>
 // 账号列表与操作按钮由角色决定，服务端会再次检查权限。
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { request, send } from '../api'
 
 const props = defineProps({ role: { type: String, required: true } })
 const users = ref([])
 const query = ref('')
+const activeQuery = ref('')
+const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const moreError = ref('')
 const error = ref('')
 const message = ref('')
 const form = reactive({ username: '', password: '', role: 'user' })
@@ -17,7 +22,9 @@ const modalBox = ref(null)
 const createInput = ref(null)
 const passwordInput = ref(null)
 const fieldsLocked = ref(true)
+const updatingId = ref(0)
 let returnFocus = null
+let loadVersion = 0
 
 async function openCreate() {
   form.username = ''
@@ -63,11 +70,43 @@ function trapFocus(event) {
 }
 
 async function load() {
+  const version = ++loadVersion
+  activeQuery.value = query.value.trim()
+  users.value = []
+  hasMore.value = false
+  loadingMore.value = false
+  moreError.value = ''
+  error.value = ''
+  loading.value = true
   try {
-    users.value = await request(`/api/admin/users?q=${encodeURIComponent(query.value)}`)
-    error.value = ''
+    const params = new URLSearchParams({ q: activeQuery.value })
+    const next = await request(`/api/admin/users?${params}`)
+    if (version !== loadVersion) return
+    users.value = next
+    hasMore.value = next.length === 100
   } catch (cause) {
-    error.value = cause.message
+    if (version === loadVersion) error.value = cause.message
+  } finally {
+    if (version === loadVersion) loading.value = false
+  }
+}
+
+// 搜索框尚未提交的新文字不影响当前列表的翻页查询。
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMore.value || !users.value.length) return
+  const version = loadVersion
+  const params = new URLSearchParams({ q: activeQuery.value, before: String(users.value.at(-1).id) })
+  loadingMore.value = true
+  moreError.value = ''
+  try {
+    const next = await request(`/api/admin/users?${params}`)
+    if (version !== loadVersion) return
+    users.value = [...users.value, ...next]
+    hasMore.value = next.length === 100
+  } catch (cause) {
+    if (version === loadVersion) moreError.value = cause.message
+  } finally {
+    if (version === loadVersion) loadingMore.value = false
   }
 }
 async function create() {
@@ -84,12 +123,18 @@ async function create() {
   }
 }
 async function setDisabled(item) {
+  if (updatingId.value) return
+  const disabled = !item.disabled
+  updatingId.value = item.id
   try {
-    await send(`/api/admin/users/${item.id}`, 'PATCH', { disabled: !item.disabled })
+    await send(`/api/admin/users/${item.id}`, 'PATCH', { disabled })
+    if (users.value.includes(item)) item.disabled = disabled
     message.value = '账号状态已更新'
-    await load()
+    error.value = ''
   } catch (cause) {
     error.value = cause.message
+  } finally {
+    updatingId.value = 0
   }
 }
 async function changePassword() {
@@ -107,6 +152,7 @@ function canManage(item) {
   return item.role === 'user' || (props.role === 'super_admin' && item.role === 'admin')
 }
 onMounted(load)
+onUnmounted(() => { loadVersion++ })
 </script>
 <template>
   <section class="panel admin-panel">
@@ -116,7 +162,7 @@ onMounted(load)
     </div>
 
     <section class="admin-section">
-      <div class="admin-section-heading"><h2>账号列表</h2><span>{{ users.length }} 个账号</span></div>
+      <div class="admin-section-heading"><h2>账号列表</h2><span>已显示 {{ users.length }} 个账号</span></div>
       <form class="inline-form admin-search" @submit.prevent="load">
         <input v-model="query" aria-label="搜索用户名" placeholder="搜索用户名" />
         <button class="admin-search-button">搜索</button>
@@ -135,7 +181,7 @@ onMounted(load)
               <td><span class="admin-status" :class="{ disabled: item.disabled }">{{ item.disabled ? '已停用' : '正常' }}</span></td>
               <td v-if="canManage(item)">
                 <div class="admin-row-actions">
-                  <button class="admin-table-button" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
+                  <button class="admin-table-button" :disabled="!!updatingId" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
                   <button class="admin-table-button" @click="openPassword(item)">修改密码</button>
                 </div>
               </td>
@@ -144,6 +190,10 @@ onMounted(load)
           </tbody>
         </table>
       </div>
+      <p v-if="loading" role="status">正在加载账号…</p>
+      <p v-else-if="!users.length && !error">没有找到账号。</p>
+      <p v-if="moreError" role="alert">{{ moreError }}</p>
+      <button v-if="hasMore" class="admin-secondary-button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多账号' }}</button>
     </section>
 
     <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal">

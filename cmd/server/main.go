@@ -82,7 +82,7 @@ func main() {
 	admin.NewHandler(db, auth, monitor).Register(router)
 	room.NewHandler(db, auth).Register(router)
 	agent.NewHandler(agent.NewStore(db), auth, agent.NewQwenFromEnv()).Register(router)
-	server := &http.Server{Addr: listenAddress(), Handler: router, ReadHeaderTimeout: 5 * time.Second}
+	server := newHTTPServer(router)
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(signals)
@@ -115,6 +115,18 @@ func listenAddress() string {
 		return addr
 	}
 	return "127.0.0.1:18080"
+}
+
+// 请求体很小，整次读取限定 15 秒，避免客户端缓慢发送数据长期占用连接。
+// WebSocket 升级后由连接自身管理读写时限，不设置 HTTP 写超时。
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              listenAddress(),
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		MaxHeaderBytes:    32 << 10,
+	}
 }
 
 func newRouter(monitor *telemetry.Store) *gin.Engine {

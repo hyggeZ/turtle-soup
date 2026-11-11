@@ -2,12 +2,23 @@ package room
 
 import (
 	"errors"
-	"github.com/gin-gonic/gin"
+	"strconv"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // snapshot 只向成员展示其角色允许看到的事件内容。
 func (h *Handler) get(c *gin.Context) {
+	var after int64
+	if raw := c.Query("after"); raw != "" {
+		var err error
+		after, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || after < 0 {
+			c.JSON(400, gin.H{"error": "事件游标无效"})
+			return
+		}
+	}
 	u, ok := h.user(c)
 	if !ok {
 		return
@@ -64,15 +75,34 @@ func (h *Handler) get(c *gin.Context) {
 		}
 		members = append(members, gin.H{"id": uid, "username": name, "role": r, "correct": correct, "hostRequest": req})
 	}
+	if e := rows.Err(); e != nil {
+		rows.Close()
+		fail(c, e)
+		return
+	}
 	rows.Close()
 	events := make([]gin.H, 0)
-	ev, e := h.db.Query(c.Request.Context(), `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
+	eventQuery := `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
 		EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer')
-		FROM room_events e LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`, id)
+		FROM room_events e`
+	eventArgs := []any{id}
+	if after > 0 {
+		// 新回答会使旧的未回答问题首次公开，需要一并补发给其他玩家。
+		eventQuery += ` JOIN (
+			SELECT id FROM room_events WHERE room_id=$1 AND id>$2
+			UNION
+			SELECT parent_id FROM room_events
+			WHERE room_id=$1 AND id>$2 AND kind='answer' AND parent_id IS NOT NULL
+		) changed ON changed.id=e.id`
+		eventArgs = append(eventArgs, after)
+	}
+	eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
+	ev, e := h.db.Query(c.Request.Context(), eventQuery, eventArgs...)
 	if e != nil {
 		fail(c, e)
 		return
 	}
+	cursor := after
 	for ev.Next() {
 		var eid, uid int64
 		var kind, body, result string
@@ -85,6 +115,8 @@ func (h *Handler) get(c *gin.Context) {
 			fail(c, errors.New("scan"))
 			return
 		}
+		// 游标包含过滤掉的私有事件，后续刷新不必重复读取这些事件。
+		cursor = eid
 		if kind == "question" && !answered && uid != u.ID && role != "host" {
 			continue
 		}
@@ -100,6 +132,11 @@ func (h *Handler) get(c *gin.Context) {
 		}
 		events = append(events, gin.H{"id": eid, "userId": uid, "subjectUserId": subject, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
 	}
+	if e := ev.Err(); e != nil {
+		ev.Close()
+		fail(c, e)
+		return
+	}
 	ev.Close()
-	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events})
+	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor})
 }

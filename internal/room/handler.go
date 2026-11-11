@@ -71,6 +71,9 @@ type createInput struct {
 	HostSelf   *bool  `json:"hostSelf"`
 }
 
+// 一个账号最多同时保留五个未结束的自建房间；等待中的房间可以由房主关闭。
+const maxOwnedRooms = 5
+
 func (h *Handler) create(c *gin.Context) {
 	u, ok := h.user(c)
 	if !ok {
@@ -95,6 +98,23 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	// 同一账号的建房请求先锁用户行，再统计房间；并发请求也不会越过上限。
+	var lockedUser int64
+	e = tx.QueryRow(c.Request.Context(), `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, u.ID).Scan(&lockedUser)
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	var owned int
+	e = tx.QueryRow(c.Request.Context(), `SELECT count(*) FROM rooms WHERE owner_id=$1 AND status IN ('waiting','active','paused')`, u.ID).Scan(&owned)
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	if owned >= maxOwnedRooms {
+		c.JSON(http.StatusConflict, gin.H{"error": "未结束的自建房间已达 5 个，请先关闭等待中的房间"})
+		return
+	}
 	var title, surface, answer, genre string
 	var authorID int64
 	var difficulty, horror int
@@ -166,7 +186,22 @@ func (h *Handler) create(c *gin.Context) {
 	c.JSON(201, gin.H{"id": id, "code": code})
 }
 func (h *Handler) list(c *gin.Context) {
-	rows, e := h.db.Query(c.Request.Context(), `SELECT r.id,r.code,r.mode,r.max_players,r.status,r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,(SELECT count(*) FROM room_members m WHERE m.room_id=r.id AND m.role='player') FROM rooms r WHERE r.public=TRUE AND r.status IN ('waiting','active') ORDER BY r.id DESC LIMIT 50`)
+	var before int64
+	if raw := c.Query("before"); raw != "" {
+		var err error
+		before, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || before < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "房间游标无效"})
+			return
+		}
+	}
+	// 按房间 ID 翻页，新建房间不会挤动已打开列表的下一页。
+	rows, e := h.db.Query(c.Request.Context(), `SELECT r.id,r.code,r.mode,r.max_players,r.status,
+		r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,
+		(SELECT count(*) FROM room_members m WHERE m.room_id=r.id AND m.role='player')
+		FROM rooms r
+		WHERE r.public=TRUE AND r.status IN ('waiting','active') AND ($1=0 OR r.id<$1)
+		ORDER BY r.id DESC LIMIT 50`, before)
 	if e != nil {
 		fail(c, e)
 		return
@@ -201,8 +236,8 @@ func (h *Handler) listMine(c *gin.Context) {
 		r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,m.role,
 		(SELECT count(*) FROM room_members player WHERE player.room_id=r.id AND player.role='player')
 		FROM room_members m JOIN rooms r ON r.id=m.room_id
-		WHERE m.user_id=$1 AND r.status IN ('waiting','active','paused')
-		ORDER BY r.id DESC LIMIT 50`, u.ID)
+		WHERE m.user_id=$1 AND r.status IN ('waiting','active','paused','closed')
+		ORDER BY CASE WHEN r.status='closed' THEN 1 ELSE 0 END, r.id DESC LIMIT 50`, u.ID)
 	if err != nil {
 		fail(c, err)
 		return
@@ -247,7 +282,7 @@ func (h *Handler) join(c *gin.Context) {
 	if !h.codes.allow(c.ClientIP(), u.ID) {
 		// 已加入的成员不受试码限额影响，网络断开后仍可返回房间。
 		var existing int64
-		err := h.db.QueryRow(c.Request.Context(), `SELECT r.id FROM rooms r JOIN room_members m ON m.room_id=r.id WHERE r.code=$1 AND m.user_id=$2`, code, u.ID).Scan(&existing)
+		err := h.db.QueryRow(c.Request.Context(), `SELECT r.id FROM rooms r JOIN room_members m ON m.room_id=r.id WHERE r.code=$1 AND m.user_id=$2 AND r.status<>'closed'`, code, u.ID).Scan(&existing)
 		if err == nil {
 			c.JSON(200, gin.H{"id": existing})
 			return
@@ -277,6 +312,10 @@ func (h *Handler) join(c *gin.Context) {
 		fail(c, e)
 		return
 	}
+	if status == "closed" {
+		c.JSON(http.StatusConflict, gin.H{"error": "房间已关闭"})
+		return
+	}
 	var member bool
 	_ = tx.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`, id, u.ID).Scan(&member)
 	if member {
@@ -284,7 +323,7 @@ func (h *Handler) join(c *gin.Context) {
 		return
 	}
 	if status == "finished" {
-		c.JSON(409, gin.H{"error": "对局已结束"})
+		c.JSON(http.StatusConflict, gin.H{"error": "对局已结束"})
 		return
 	}
 	var authorID int64
