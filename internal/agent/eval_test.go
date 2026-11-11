@@ -21,11 +21,26 @@ func loadEvalCases(t *testing.T) []EvalCase {
 
 func TestGoldenSet(t *testing.T) {
 	cases := loadEvalCases(t)
-	if len(cases) < 108 {
+	if len(cases) < 144 {
 		t.Fatalf("评测样例不足：%d", len(cases))
 	}
 	if len(EvalSetHash()) != 64 {
 		t.Fatal("评测集摘要无效")
+	}
+	// 独立边界题保持三分类平衡，避免以后补题时只增加容易命中的类别。
+	labels := make(map[string]int)
+	for _, sample := range cases {
+		if strings.HasPrefix(sample.ID, "boundary_") {
+			labels[sample.Kind+":"+sample.Expected]++
+		}
+	}
+	for key, want := range map[string]int{
+		"question:是": 8, "question:否": 8, "question:无关": 8,
+		"restore:正确": 4, "restore:不完整": 4, "restore:错误": 4,
+	} {
+		if labels[key] != want {
+			t.Fatalf("边界题类别数量错误：%s=%d，期望 %d", key, labels[key], want)
+		}
 	}
 }
 
