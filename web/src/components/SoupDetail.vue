@@ -152,57 +152,72 @@ onMounted(load)
 onUnmounted(() => { loadVersion++ })
 </script>
 <template>
-  <section class="panel soup-detail" v-if="soup">
-    <button class="text-button" @click="emit('back')">← 返回广场</button><h2>{{ soup.title }}</h2>
-    <p v-if="soup.hidden" class="muted" role="status">题目已被管理员隐藏，仅作者可查看。暂时不能编辑、互动或用于新对局；你仍可删除它。</p>
-    <p class="meta">{{ soup.genre }} · 难度 {{ soup.difficulty }}/5 · 恐怖 {{ soup.horror }}/5 · <button class="text-button" @click="emit('profile', soup.authorId)">@{{ soup.author }}</button></p>
-    <p class="surface full">{{ soup.surface }}</p>
-    <div v-if="!soup.hidden" class="actions">
-      <button v-if="user" class="small-button" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
-      <button v-if="user" class="small-button" @click="toggle('bookmark', soup.bookmarked)">{{ soup.bookmarked ? '★ 已收藏' : '☆ 收藏' }} {{ soup.bookmarks }}</button>
-      <button v-if="user && !answer" class="small-button" @click="showAnswer">查看汤底</button>
-      <button v-if="user" class="small-button" @click="emit('play', soup.id)">用此题建房</button>
-      <button class="primary-button" @click="emit('solo', soup.id)">单人试玩</button>
-    </div>
-    <div v-if="isAuthor" class="author-actions">
-      <button v-if="soup.hidden && !answer" class="small-button" @click="showAnswer">查看汤底</button>
-      <button v-if="!soup.hidden" class="small-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>
-      <button class="small-button" :disabled="deleting" @click="deleteSoup">{{ deleting ? '正在删除…' : '删除题目' }}</button>
-    </div>
-    <p v-if="!user" class="muted">登录后可互动或查看汤底。</p>
-    <div v-if="answer" class="answer"><h3>汤底</h3><p>{{ answer }}</p></div>
-    <template v-if="!soup.hidden">
-      <h3>评论 {{ soup.comments }}</h3>
-      <form v-if="user" @submit.prevent="addComment">
-        <textarea v-model="comment" rows="3" maxlength="500" placeholder="写下你的想法" required></textarea>
-        <label class="check-line"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label>
-        <button :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button>
-      </form>
-      <p v-if="commentsBusy && !comments.length" role="status" class="muted">正在加载评论…</p>
-      <p v-else-if="!comments.length && !commentsError" class="muted">还没有评论。</p>
-      <div v-for="item in comments" :key="item.id" class="comment">
-        <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
-        <p v-if="item.spoiler && !item.body" class="muted">
-          剧透评论
-          <button v-if="user" class="text-button" @click="showComment(item)">展开</button>
-          <span v-else>· 登录后可查看</span>
+  <section v-if="soup" class="soup-detail-h4">
+    <p class="page-crumb"><button class="text-button" @click="emit('back')">题目社区</button><span>/</span>{{ soup.title }}</p>
+    <div class="detail-grid">
+      <div class="detail-main">
+        <h2>{{ soup.title }}</h2>
+        <p class="detail-meta">
+          <button class="text-button" @click="emit('profile', soup.authorId)">@{{ soup.author }}</button>
+          <span>·</span>{{ soup.genre }}<span>·</span>难度 {{ soup.difficulty }}/5<span>·</span>恐怖 {{ soup.horror }}/5
         </p>
-        <p v-else>{{ item.body }}</p>
+        <p v-if="soup.hidden" class="detail-notice" role="status">题目已隐藏，仅作者可查看。暂时不能编辑、互动或用于新对局；你仍可删除它。</p>
+        <div class="detail-surface surface">{{ soup.surface }}</div>
+        <div v-if="!soup.hidden" class="detail-actions">
+          <button class="primary-button" @click="emit('solo', soup.id)">单人试玩 ↗</button>
+          <button v-if="user" class="detail-dark-button" @click="emit('play', soup.id)">用此题建房</button>
+          <button v-if="user" class="small-button" :aria-pressed="!!soup.liked" @click="toggle('like', soup.liked)">{{ soup.liked ? '♥ 已点赞' : '♡ 点赞' }} {{ soup.likes }}</button>
+          <button v-if="user" class="small-button" :aria-pressed="!!soup.bookmarked" @click="toggle('bookmark', soup.bookmarked)">{{ soup.bookmarked ? '★ 已收藏' : '☆ 收藏' }} {{ soup.bookmarks }}</button>
+          <button v-if="user && !answer" class="detail-text-button" @click="showAnswer">查看汤底</button>
+        </div>
+        <div v-if="isAuthor" class="detail-author-actions">
+          <button v-if="soup.hidden && !answer" class="detail-text-button" @click="showAnswer">查看汤底</button>
+          <button v-if="!soup.hidden" class="detail-text-button" :disabled="deleting" @click="emit('edit', soup.id)">编辑题目</button>
+          <button class="detail-text-button" :disabled="deleting" @click="deleteSoup">{{ deleting ? '正在删除…' : '删除题目' }}</button>
+        </div>
+        <p v-if="!user" class="detail-hint">登录后可互动或查看汤底。</p>
+        <div v-if="answer" class="detail-answer"><h3>汤底</h3><p>{{ answer }}</p></div>
+
+        <section v-if="!soup.hidden" class="detail-comments">
+          <h3>评论 <span>{{ soup.comments }}</span></h3>
+          <form v-if="user" class="detail-comment-form" @submit.prevent="addComment">
+            <label class="detail-comment-field">发表评论<textarea v-model="comment" rows="2" maxlength="500" placeholder="写下你的想法" required></textarea></label>
+            <div class="detail-comment-controls">
+              <label class="check-line"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label>
+              <button class="primary-button" :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button>
+            </div>
+          </form>
+          <p v-if="commentsBusy && !comments.length" role="status" class="detail-hint">正在加载评论…</p>
+          <p v-else-if="!comments.length && !commentsError" class="detail-hint">还没有评论。</p>
+          <article v-for="item in comments" :key="item.id" class="comment">
+            <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
+            <p v-if="item.spoiler && !item.body" class="detail-hint">
+              剧透评论 <button v-if="user" class="detail-text-button" @click="showComment(item)">展开</button><span v-else> · 登录后可查看</span>
+            </p>
+            <p v-else>{{ item.body }}</p>
+          </article>
+          <div v-if="commentsError" role="alert">
+            <p>{{ commentsError }}</p>
+            <button v-if="!comments.length" class="small-button" @click="loadComments(props.id, loadVersion)">重试加载评论</button>
+          </div>
+          <button v-if="hasMoreComments" class="small-button" :disabled="commentsBusy" @click="loadMoreComments">{{ commentsBusy ? '正在加载…' : '加载更多评论' }}</button>
+        </section>
+        <p v-if="error" role="alert">{{ error }}</p>
       </div>
-      <div v-if="commentsError" role="alert">
-        <p>{{ commentsError }}</p>
-        <button v-if="!comments.length" class="small-button" @click="loadComments(props.id, loadVersion)">重试加载评论</button>
-      </div>
-      <button v-if="hasMoreComments" class="small-button" :disabled="commentsBusy" @click="loadMoreComments">{{ commentsBusy ? '正在加载…' : '加载更多评论' }}</button>
-    </template>
-    <p v-if="error" role="alert">{{ error }}</p>
-  </section>
-  <section v-else class="panel">
-    <button class="text-button" @click="emit('back')">← 返回广场</button>
-    <p v-if="loading" role="status">正在加载题目…</p>
-    <div v-else-if="error" role="alert">
-      <p>{{ error }}</p>
-      <button class="small-button" @click="load">重试</button>
+
+      <aside class="detail-aside">
+        <h3>关于这道题</h3><span class="aside-mark" aria-hidden="true"></span>
+        <div class="detail-aside-tags"><span>{{ soup.genre }}</span><span>难度 {{ soup.difficulty }}/5</span><span>恐怖 {{ soup.horror }}/5</span></div>
+        <div class="aside-divider"></div>
+        <p>作者</p><button class="text-button" @click="emit('profile', soup.authorId)">@{{ soup.author }} ↗</button>
+        <div class="aside-divider"></div>
+        <p>查看汤底会结束这道题的玩家资格。</p>
+      </aside>
     </div>
+  </section>
+  <section v-else class="detail-state">
+    <button class="text-button" @click="emit('back')">← 返回题目社区</button>
+    <p v-if="loading" role="status">正在加载题目…</p>
+    <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="small-button" @click="load">重试</button></div>
   </section>
 </template>

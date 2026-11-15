@@ -262,9 +262,9 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++ })
 </script>
 
 <template>
-  <section class="panel solo-page">
-    <div class="section-head">
-      <h1>单人模式</h1>
+  <section class="solo-page" :class="{ 'solo-has-game': !!game }">
+    <div class="section-head solo-page-head">
+      <span class="play-kicker">SOLO / AI HOST</span>
       <div v-if="game" class="solo-head-actions">
         <button class="text-button" aria-controls="solo-games" :aria-expanded="showGames" @click="showGames = !showGames">
           {{ showGames ? '收起列表' : '查看其他对局' }}
@@ -273,18 +273,22 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++ })
       </div>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
+    <div v-if="!game" class="solo-intro">
+      <div><span class="play-kicker">AI HOST</span><h2>一个人，也能开一局。</h2><p>选一道题，向 AI 主持提问并还原真相。</p></div>
+      <span class="solo-intro-mark" aria-hidden="true">?</span>
+    </div>
     <div v-if="!user" class="solo-entry">
       <button class="primary-button" @click="emit('login')">登录后试玩</button>
     </div>
 
     <div v-else-if="!game" class="solo-entry solo-start">
       <h2>开始新对局</h2>
-      <SoupPicker v-model="soupId" />
+      <SoupPicker v-model="soupId" preview />
       <p v-if="activeCount >= 5" class="muted">已有 5 局正在进行，请先完成一局。</p>
       <button class="primary-button" :disabled="busy || loading || gamesLoading || activeCount >= 5 || !soupId" @click="start">{{ busy ? '正在创建…' : loading ? '正在恢复对局…' : '开始推理' }}</button>
     </div>
 
-    <section v-if="user" v-show="!game || showGames" id="solo-games" class="solo-entry solo-games">
+    <section v-if="user" v-show="!game || showGames" id="solo-games" class="solo-entry solo-games" :class="{ 'solo-games-expanded': !!game }">
       <div class="section-head">
         <h2>我的对局</h2>
         <button class="text-button" :disabled="gamesLoading" @click="loadGames">刷新</button>
@@ -303,44 +307,48 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++ })
       </article>
     </section>
 
-    <template v-if="game">
-      <div class="room-summary">
-        <h2>{{ game.title }}</h2>
-        <p class="meta">{{ game.status === 'finished' ? '已结束' : '推理中' }}</p>
-        <p class="surface">{{ game.surface }}</p>
-      </div>
-
-      <template v-if="game.status === 'active'">
-        <div v-if="retry" class="solo-retry">
-          <p>上次操作的结果还未确认。重试会沿用同一操作 ID。</p>
-          <button class="small-button" :disabled="busy" @click="execute(retry)">{{ busy ? '正在等待 AI 主持…' : '重试上次操作' }}</button>
+    <div v-if="game" class="solo-game-layout">
+      <div class="solo-game-main">
+        <div class="solo-game-heading">
+          <div><span class="play-kicker">{{ game.status === 'finished' ? 'FINISHED' : 'SOLO / AI HOST' }}</span><h2>{{ game.title }}</h2></div>
+          <span class="solo-status">{{ game.status === 'finished' ? '已结束' : '推理中' }}</span>
         </div>
-        <div v-if="busy" class="solo-working" role="status">AI 主持正在思考，请稍候…</div>
-        <form class="room-action-form" @submit.prevent="act('question', question)">
-          <label>向 AI 主持提问
-            <input v-model="question" maxlength="500" :disabled="busy || !!retry" placeholder="输入一个可以回答是、否或无关的问题" />
-          </label>
-          <button :disabled="busy || !!retry || !question.trim()">发送问题</button>
-        </form>
-        <form class="room-action-form" @submit.prevent="act('restore', restore)">
-          <label>还原真相
-            <textarea v-model="restore" rows="3" maxlength="2000" :disabled="busy || !!retry" placeholder="写下你推测的完整真相" />
-          </label>
-          <button :disabled="busy || !!retry || !restore.trim()">提交还原</button>
-        </form>
-        <button class="small-button" :disabled="busy || !!retry" @click="reveal">查看汤底并结束</button>
-        <button class="small-button" :disabled="busy || loading" @click="chooseAgain">选择其他题目</button>
-      </template>
+        <div class="room-summary solo-surface">
+          <div class="room-surface-top"><span>汤面</span><span>AI 主持</span></div>
+          <h3>{{ game.title }}</h3>
+          <p class="surface">{{ game.surface }}</p>
+        </div>
+        <template v-if="game.status === 'active'">
+          <div v-if="retry" class="solo-retry">
+            <p>上次操作的结果还未确认。重试会沿用同一操作 ID。</p>
+            <button class="small-button" :disabled="busy" @click="execute(retry)">{{ busy ? '正在等待 AI 主持…' : '重试上次操作' }}</button>
+          </div>
+          <div v-if="busy" class="solo-working" role="status">AI 主持正在思考，请稍候…</div>
+          <form class="room-action-form" @submit.prevent="act('question', question)">
+            <label>向 AI 主持提问
+              <input v-model="question" maxlength="500" :disabled="busy || !!retry" placeholder="输入一个可以回答是、否或无关的问题" />
+            </label>
+            <button :disabled="busy || !!retry || !question.trim()">发送问题</button>
+          </form>
+          <form class="room-action-form" @submit.prevent="act('restore', restore)">
+            <label>还原真相
+              <textarea v-model="restore" rows="3" maxlength="2000" :disabled="busy || !!retry" placeholder="写下你推测的完整真相" />
+            </label>
+            <button :disabled="busy || !!retry || !restore.trim()">提交还原</button>
+          </form>
+          <button class="small-button" :disabled="busy || !!retry" @click="reveal">查看汤底并结束</button>
+          <button class="small-button" :disabled="busy || loading" @click="chooseAgain">选择其他题目</button>
+        </template>
 
-      <div v-if="latest?.model" class="solo-model meta">
-        本次判定：{{ latest.result }} · {{ latest.model }} · {{ Number(latest.latencyMs || 0).toFixed(0) }} ms
-      </div>
-      <div v-if="game.status === 'finished'" class="solo-finished">
-        <h3>对局结束</h3>
-        <div v-if="game.answer" class="answer"><h3>汤底</h3><p>{{ game.answer }}</p></div>
-        <button class="small-button" @click="chooseAgain">换一道题</button>
+        <div v-if="latest?.model" class="solo-model meta">
+          本次判定：{{ latest.result }} · {{ latest.model }} · {{ Number(latest.latencyMs || 0).toFixed(0) }} ms
+        </div>
+        <div v-if="game.status === 'finished'" class="solo-finished">
+          <div v-if="game.answer" class="answer"><span class="play-kicker">TRUTH / 汤底</span><h3>故事的真相</h3><p>{{ game.answer }}</p></div>
+          <button class="primary-button" @click="chooseAgain">再来一局 →</button>
+        </div>
       </div>
       <SoloHistory :events="game.events" />
-    </template>
+    </div>
   </section>
 </template>

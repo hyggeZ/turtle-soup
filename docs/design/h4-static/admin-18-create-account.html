@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>海龟汤后台 · 18-create-account</title>
+<link rel="stylesheet" href="theme.css" />
+<link rel="stylesheet" href="admin-static.css" />
+</head><body><div class="admin-frame">
+  <aside class="admin-side">
+    <div class="side-brand"><strong>海龟汤</strong><span>管理后台</span></div>
+    <nav class="side-nav"><a class="active" href="#"><span class="side-icon">◎</span>账号管理</a><a class="" href="#"><span class="side-icon">◇</span>题目管理</a><a class="" href="#"><span class="side-icon">▥</span>运行日志</a></nav>
+    <div class="side-bottom"><a href="#"><span class="arrow">←</span>返回游戏系统</a></div>
+  </aside>
+  <main class="admin-main">
+    <header class="admin-top">
+      <div class="breadcrumb">海龟汤后台 <span>／</span> <strong>账号管理</strong></div>
+      <div class="top-account"><span class="account-role">超级管理员</span><span class="top-avatar">K</span><strong>king</strong><span class="top-sep"></span><span class="top-logout">退出</span></div>
+    </header>
+    <div class="admin-work"><div class="work-heading"><div><h1 class="work-title">账号管理</h1></div><button class="admin-primary"><span class="plus">＋</span>创建账号</button></div><section class="work-surface">
+      <div class="surface-header"><h2 class="surface-title">账号列表</h2><span class="surface-count">共 -- 个账号</span></div>
+      <div class="search-row"><input class="admin-input admin-search-input" placeholder="搜索用户名" /><button class="admin-search-btn">搜索</button></div>
+      <div class="table-scroll"><table class="admin-table">
+        <colgroup><col style="width:10%"><col style="width:29%"><col style="width:20%"><col style="width:16%"><col style="width:25%"></colgroup>
+        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody><tr><td style="color:#a89ba8">—</td><td><span class="name">king</span></td>
+          <td><span class="pill super">超级管理员</span></td><td><span style="color:#aa9fac">—</span></td><td><span style="color:#aa9fac">—</span></td></tr><tr><td style="color:#a89ba8">—</td><td><span class="name">paperboat_26</span></td>
+          <td><span class="pill ">普通用户</span></td><td><span class="status">正常</span></td><td><div class="table-actions"><span class="table-link">停用</span><span class="table-link alt">修改密码</span></div></td></tr><tr><td style="color:#a89ba8">—</td><td><span class="name">lamplight_26</span></td>
+          <td><span class="pill ">普通用户</span></td><td><span class="status">正常</span></td><td><div class="table-actions"><span class="table-link">停用</span><span class="table-link alt">修改密码</span></div></td></tr><tr><td style="color:#a89ba8">—</td><td><span class="name">nighttram_26</span></td>
+          <td><span class="pill ">普通用户</span></td><td><span class="status">正常</span></td><td><div class="table-actions"><span class="table-link">停用</span><span class="table-link alt">修改密码</span></div></td></tr></tbody>
+      </table></div>
+      <div class="table-footer"><span>当前展示 4 个账号</span><span class="next">加载更多账号　→</span></div>
+    </section></div>
+  </main>
+  <div class="admin-overlay"><section class="admin-dialog ">
+      <div class="dialog-heading"><h2>创建账号</h2><span class="dialog-close">×</span></div>
+      <div class="dialog-body"><div class="dialog-field"><label>用户名</label><input class="admin-input" placeholder="输入用户名" /></div>
+  <div class="dialog-field"><label>初始密码</label><input class="admin-input" type="password" placeholder="至少 8 位" /></div>
+  <div class="dialog-field"><label>角色</label><select class="admin-select"><option>普通用户</option><option>管理员</option></select></div>
+  <div class="dialog-actions"><button class="admin-secondary">取消</button><button class="admin-primary">创建账号</button></div></div>
+    </section></div>
+</div></body></html>

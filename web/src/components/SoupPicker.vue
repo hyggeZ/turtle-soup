@@ -3,7 +3,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { request } from '../api'
 
-const props = defineProps({ modelValue: { type: Number, default: 0 } })
+const props = defineProps({ modelValue: { type: Number, default: 0 }, preview: { type: Boolean, default: false } })
 const emit = defineEmits(['update:modelValue'])
 const soups = ref([])
 const page = ref(0)
@@ -16,6 +16,7 @@ const selected = computed({
   get: () => props.modelValue,
   set: value => emit('update:modelValue', value),
 })
+const chosenSoup = computed(() => soups.value.find(item => item.id === props.modelValue))
 
 function addSoup(soup) {
   if (!soups.value.some(item => item.id === soup.id)) soups.value.push(soup)
@@ -106,6 +107,8 @@ onMounted(() => {
     <button v-if="more" type="button" class="text-button" :disabled="loading" @click="loadMore">
       {{ loading ? '加载中…' : '查看更多题目' }}
     </button>
+    <div v-if="preview && chosenSoup" class="soup-picker-preview"><strong>{{ chosenSoup.title }}</strong><p>{{ chosenSoup.surface }}</p></div>
+    <p v-if="!loading && !soups.length && !error" class="muted">暂无可选题目。</p>
     <p v-if="error" role="alert">{{ error }}</p>
   </div>
 </template>

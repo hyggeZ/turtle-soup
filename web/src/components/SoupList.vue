@@ -3,8 +3,8 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../api'
 
-const props = defineProps({ author: { type: Number, default: 0 }, refresh: { type: Number, default: 0 } })
-const emit = defineEmits(['open', 'profile'])
+const props = defineProps({ author: { type: Number, default: 0 }, own: { type: Boolean, default: false }, refresh: { type: Number, default: 0 } })
+const emit = defineEmits(['open', 'profile', 'lobby', 'solo', 'write'])
 const items = ref([])
 const error = ref('')
 const moreError = ref('')
@@ -68,37 +68,51 @@ onUnmounted(() => { loadVersion++ })
 </script>
 
 <template>
-  <section class="feed-section">
-    <h2 v-if="author" class="profile-soups-heading">发布的汤</h2>
-    <div v-if="error" role="alert">
-      <p>{{ error }}</p>
-      <button class="small-button" @click="load">重试</button>
-    </div>
-    <p v-if="loading" role="status" class="empty-state">正在加载汤题…</p>
-    <p v-else-if="!items.length && !error" class="empty-state">还没有汤题。</p>
-
-    <article v-for="item in items" :key="item.id" class="soup-entry">
-      <button class="entry-title" @click="emit('open', item.id)">{{ item.title }}</button>
-      <p class="surface entry-preview">{{ item.surface }}</p>
-      <div class="entry-tags">
-        <span v-if="item.hidden">已隐藏 · 仅作者可见</span>
-        <span>{{ item.genre }}</span>
-        <span>难度 {{ item.difficulty }}/5</span>
-        <span>恐怖 {{ item.horror }}/5</span>
+  <div :class="author ? 'profile-feed' : 'community-grid'">
+    <section class="feed-section">
+      <div class="feed-heading"><h2>{{ author ? '发布的汤' : '全部题目' }}</h2></div>
+      <div v-if="error" class="feed-state" role="alert">
+        <p>{{ error }}</p>
+        <button class="small-button" @click="load">重试</button>
       </div>
-      <div class="entry-bottom">
-        <div class="entry-author">
-          <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
-          <span>·</span>
-          <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleDateString('zh-CN') }}</time>
+      <p v-if="loading" class="feed-state" role="status">正在加载汤题…</p>
+      <div v-else-if="!items.length && !error" class="feed-state feed-empty">
+        <span class="empty-mark" aria-hidden="true">?</span>
+        <div><strong>{{ own ? '你还没有发布汤题' : '还没有汤题' }}</strong><p>{{ own ? '发布后，题目会显示在这里。' : '稍后再来看看。' }}</p></div>
+        <button v-if="own" class="primary-button" @click="emit('write')">＋ 发布汤题</button>
+      </div>
+
+      <article v-for="item in items" :key="item.id" class="soup-entry">
+        <button class="entry-title" @click="emit('open', item.id)">{{ item.title }} <span aria-hidden="true">↗</span></button>
+        <p class="surface entry-preview">{{ item.surface }}</p>
+        <div class="entry-tags">
+          <span v-if="item.hidden" class="hidden-tag">已隐藏 · 仅作者可见</span>
+          <span>{{ item.genre }}</span>
+          <span>难度 {{ item.difficulty }}/5</span>
+          <span>恐怖 {{ item.horror }}/5</span>
         </div>
-        <div class="entry-stats"><span>♡ {{ item.likes }}</span><span>☆ {{ item.bookmarks }}</span><span>评论 {{ item.comments }}</span></div>
-      </div>
-    </article>
+        <div class="entry-bottom">
+          <div class="entry-author">
+            <button class="text-button" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
+            <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleDateString('zh-CN') }}</time>
+          </div>
+          <div class="entry-stats"><span>♡ {{ item.likes }}</span><span>☆ {{ item.bookmarks }}</span><span>评论 {{ item.comments }}</span></div>
+        </div>
+      </article>
 
-    <p v-if="moreError" role="alert">{{ moreError }}</p>
-    <button v-if="hasMore" class="small-button" :disabled="loadingMore" @click="loadMore">
-      {{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多题目' }}
-    </button>
-  </section>
+      <p v-if="moreError" role="alert">{{ moreError }}</p>
+      <button v-if="hasMore" class="small-button feed-more" :disabled="loadingMore" @click="loadMore">
+        {{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多题目' }}
+      </button>
+    </section>
+    <aside v-if="!author" class="community-aside">
+      <h3>怎么玩</h3><span class="aside-mark" aria-hidden="true"></span>
+      <p>阅读汤面后，用“是 / 否 / 无关”的问题逐步还原真相。</p>
+      <div class="aside-links">
+        <button @click="emit('lobby')">进入房间大厅 ↗</button>
+        <button @click="emit('solo')">开始单人试玩 ↗</button>
+        <button @click="emit('write')">发布自己的题目 ↗</button>
+      </div>
+    </aside>
+  </div>
 </template>

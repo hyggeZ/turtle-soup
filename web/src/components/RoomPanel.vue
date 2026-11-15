@@ -258,10 +258,10 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
 </script>
 
 <template>
-  <section class="panel room-page">
-    <div class="section-head">
-      <h1>房间</h1>
-      <button class="text-button" @click="emit('back')">返回大厅</button>
+  <section class="room-page" :class="room ? `room-${room.status}` : ''">
+    <div class="section-head room-page-head">
+      <span class="play-kicker">{{ room ? `${room.mode === 'casual' ? 'COOP' : 'MATCH'} / ${room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观'}` : 'ROOM' }}</span>
+      <button class="text-button" @click="emit('back')">← 返回大厅</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="room-notice" role="status">{{ notice }}</p>
@@ -273,22 +273,15 @@ watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', va
 
     <template v-if="room">
       <div class="room-summary">
-        <h2>{{ room.title }}</h2>
-        <div class="room-code">
-          <span>房间码</span>
-          <code>{{ room.code }}</code>
-          <button class="text-button" @click="copyCode">复制房间码</button>
+        <div class="room-summary-heading">
+          <div><h2>{{ room.title }}</h2><p class="meta">{{ room.mode === 'casual' ? '共探' : '竞答' }} · {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : room.status === 'closed' ? '已关闭' : '已结束' }} · {{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5</p></div>
+          <div class="room-code"><span>房间码</span><code>{{ room.code }}</code><button class="text-button" @click="copyCode">复制房间码</button></div>
         </div>
-        <p class="meta">
-          {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-          {{ room.status === 'waiting' ? '等待开始' : room.status === 'active' ? '进行中' : room.status === 'paused' ? '主持人离线，已暂停' : room.status === 'closed' ? '已关闭' : '已结束' }}
-        </p>
-        <p class="meta">{{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5 · 玩家 {{ playerCount }}/{{ room.maxPlayers }}</p>
-        <p class="surface">{{ room.surface }}</p>
       </div>
+      <div class="room-surface"><div class="room-surface-top"><span>汤面</span><span>{{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5</span></div><h3>{{ room.title }}</h3><p class="surface">{{ room.surface }}</p></div>
 
       <section class="room-members">
-        <h3>成员</h3>
+        <div class="section-head"><h3>成员</h3><span class="meta">{{ playerCount }} / {{ room.maxPlayers }} 玩家</span></div>
         <div class="members">
           <span v-for="member in room.members" :key="member.id" class="member-tag">
             {{ member.username }} · {{ member.role === 'host' ? '主持' : member.role === 'player' ? '玩家' : '旁观' }}{{ member.correct ? ' · 已答对' : '' }}

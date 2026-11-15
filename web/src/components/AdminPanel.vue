@@ -155,34 +155,34 @@ onMounted(load)
 onUnmounted(() => { loadVersion++ })
 </script>
 <template>
-  <section class="panel admin-panel">
+  <section class="admin-panel admin-account-panel">
     <div class="admin-page-heading">
       <h1>账号管理</h1>
-      <button class="admin-primary-button" @click="openCreate"><span aria-hidden="true">＋</span> 创建账号</button>
+      <button type="button" class="admin-primary-button" @click="openCreate"><span aria-hidden="true">＋</span> 创建账号</button>
     </div>
 
     <section class="admin-section">
       <div class="admin-section-heading"><h2>账号列表</h2><span>已显示 {{ users.length }} 个账号</span></div>
       <form class="inline-form admin-search" @submit.prevent="load">
         <input v-model="query" aria-label="搜索用户名" placeholder="搜索用户名" />
-        <button class="admin-search-button">搜索</button>
+        <button type="submit" class="admin-search-button">搜索</button>
       </form>
-      <p v-if="error && !modal" role="alert">{{ error }}</p>
-      <p v-if="message" role="status">{{ message }}</p>
+      <p v-if="error && !modal" class="admin-feedback error" role="alert">{{ error }}</p>
+      <p v-if="message" class="admin-feedback success" role="status">{{ message }}</p>
       <p class="admin-scroll-hint">左右滑动表格查看操作</p>
       <div class="admin-table-wrap">
-        <table class="simple-table">
+        <table class="simple-table" aria-label="账号列表">
           <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="item in users" :key="item.id">
               <td>{{ item.id }}</td>
-              <td>{{ item.username }}</td>
+              <td><strong class="admin-item-name">{{ item.username }}</strong></td>
               <td><span class="admin-role" :class="item.role">{{ item.role === 'super_admin' ? '超级管理员' : item.role === 'admin' ? '管理员' : '普通用户' }}</span></td>
               <td><span class="admin-status" :class="{ disabled: item.disabled }">{{ item.disabled ? '已停用' : '正常' }}</span></td>
               <td v-if="canManage(item)">
                 <div class="admin-row-actions">
-                  <button class="admin-table-button" :disabled="!!updatingId" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
-                  <button class="admin-table-button" @click="openPassword(item)">修改密码</button>
+                  <button type="button" class="admin-table-button" :disabled="!!updatingId" @click="setDisabled(item)">{{ item.disabled ? '恢复' : '停用' }}</button>
+                  <button type="button" class="admin-table-button alt" @click="openPassword(item)">修改密码</button>
                 </div>
               </td>
               <td v-else></td>
@@ -190,16 +190,19 @@ onUnmounted(() => { loadVersion++ })
           </tbody>
         </table>
       </div>
-      <p v-if="loading" role="status">正在加载账号…</p>
-      <p v-else-if="!users.length && !error">没有找到账号。</p>
-      <p v-if="moreError" role="alert">{{ moreError }}</p>
-      <button v-if="hasMore" class="admin-secondary-button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多账号' }}</button>
+      <p v-if="loading" class="admin-empty" role="status">正在加载账号…</p>
+      <p v-else-if="!users.length && !error" class="admin-empty">没有找到账号。</p>
+      <p v-if="moreError" class="admin-feedback error" role="alert">{{ moreError }}</p>
+      <div class="admin-table-footer">
+        <span>当前展示 {{ users.length }} 个账号</span>
+        <button v-if="hasMore" type="button" class="admin-secondary-button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多账号 →' }}</button>
+      </div>
     </section>
 
     <div v-if="modal" class="admin-modal-backdrop" @click.self="closeModal">
-      <section ref="modalBox" class="admin-modal" role="dialog" aria-modal="true" :aria-label="modal === 'create' ? '创建账号' : '修改密码'" @keydown.esc.stop.prevent="closeModal" @keydown.tab="trapFocus">
+      <section ref="modalBox" class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" @keydown.esc.stop.prevent="closeModal" @keydown.tab="trapFocus">
         <div class="admin-modal-heading">
-          <h2>{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2>
+          <h2 id="account-modal-title">{{ modal === 'create' ? '创建账号' : '修改密码' }}</h2>
           <button type="button" class="admin-close-button" aria-label="关闭弹窗" @click="closeModal">×</button>
         </div>
         <form v-if="modal === 'create'" autocomplete="off" @submit.prevent="create">
@@ -215,16 +218,16 @@ onUnmounted(() => { loadVersion++ })
               <option v-if="role === 'super_admin'" value="admin">管理员</option>
             </select>
           </label>
-          <p v-if="error" role="alert">{{ error }}</p>
+          <p v-if="error" class="admin-feedback error" role="alert">{{ error }}</p>
           <div class="admin-modal-actions"><button type="button" class="admin-secondary-button" @click="closeModal">取消</button><button class="admin-primary-button">创建账号</button></div>
         </form>
         <form v-else autocomplete="off" @submit.prevent="changePassword">
-          <p class="admin-form-note">账号：{{ passwordName }}</p>
+          <p class="admin-form-note admin-account-note">账号 <strong>{{ passwordName }}</strong></p>
           <label>新密码
             <input ref="passwordInput" v-model="newPassword" name="updated-account-secret" type="password" autocomplete="new-password" required minlength="8" placeholder="输入新密码" />
           </label>
           <p class="admin-form-note">修改后，该账号需要重新登录。</p>
-          <p v-if="error" role="alert">{{ error }}</p>
+          <p v-if="error" class="admin-feedback error" role="alert">{{ error }}</p>
           <div class="admin-modal-actions"><button type="button" class="admin-secondary-button" @click="closeModal">取消</button><button class="admin-primary-button">保存密码</button></div>
         </form>
       </section>

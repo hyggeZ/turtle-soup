@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>海龟汤 · 多人及单人页面静态稿</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="play-static.css" />
+</head>
+<body>
+  <script>
+    // 静态稿按查询参数切换页面，截图和源文件使用同一套布局。
+    const page = new URLSearchParams(location.search).get('p') || '08'
+    const soup = '一个人走进酒吧，向酒保要了一杯水。酒保却突然举起枪，那人道谢后离开。为什么？'
+    const answer = '那人一直在打嗝，想喝水缓解。酒保举枪吓了他一跳，打嗝因此停了，所以他道谢离开。'
+    const chip = (text, type = '') => `<span class="play-chip ${type}">${text}</span>`
+    const title = (main, side = '') => `<div class="play-heading"><h2>${main}</h2><span>${side}</span></div>`
+    const buttons = (items) => items.map((item, i) => `<button class="${i === 0 ? 'play-main-button' : 'play-line-button'}">${item}</button>`).join('')
+    const soupExcerpt = `<div class="play-soup"><div class="play-soup-top"><span>汤面</span><span>本格 · 难度 2/5 · 恐怖 1/5</span></div><h2>酒吧里的一杯水</h2><p>${soup}</p></div>`
+
+    const pages = {
+      '08': {
+        title: '房间大厅', sub: '选择一局推理，或者创建自己的房间。', area: '房间大厅',
+        content: `
+          <div class="play-lobby-top">
+            <div class="play-intro"><span class="play-kicker">ROOM LOBBY</span><h2>选择房间</h2><p>从公开房间加入，或用房间码与朋友会合。</p></div>
+            <div class="play-join"><label>房间码加入</label><div><input placeholder="输入房间码" value="" /><button class="play-line-button">加入房间</button></div></div>
+            <button class="play-main-button">＋ 创建房间</button>
+          </div>
+          <div class="play-tabs"><b>公开房间</b><span>我的房间</span><span>房间记录</span><a>刷新 ↻</a></div>
+          <div class="play-lobby-grid">
+            <div class="play-room-list">
+              <article class="play-room-row"><div class="play-room-index">01</div><div class="play-room-main"><h3>酒吧里的一杯水</h3><p>共探 · 等待开始 · 本格 · 难度 2/5 · 恐怖 1/5</p></div><div class="play-room-side"><strong>2 / 6</strong><small>玩家</small></div><button class="play-line-button">进入 →</button></article>
+              <article class="play-room-row"><div class="play-room-index">02</div><div class="play-room-main"><h3>电梯里的男人</h3><p>竞答 · 等待开始 · 本格 · 难度 3/5 · 恐怖 0/5</p></div><div class="play-room-side"><strong>3 / 5</strong><small>玩家</small></div><button class="play-line-button">进入 →</button></article>
+              <article class="play-room-row"><div class="play-room-index">03</div><div class="play-room-main"><h3>深夜的敲门声</h3><p>共探 · 进行中 · 变格 · 难度 4/5 · 恐怖 3/5</p></div><div class="play-room-side"><strong>4 / 8</strong><small>玩家</small></div><button class="play-line-button">进入 →</button></article>
+              <div class="play-more">加载更多房间 ↓</div>
+            </div>
+            <aside class="play-lobby-aside"><span>房间模式</span><h3>共探<br/>或竞答</h3><p>共探房间可以在进行中加入。竞答房间开局后只能旁观。</p><div class="play-accent-line"></div><b>选择适合自己的玩法</b></aside>
+          </div>`
+      },
+      '09': {
+        title: '创建房间', sub: '选好题目和玩法，再邀请玩家入场。', area: '房间大厅',
+        content: `
+          <div class="play-back">← 返回大厅</div>
+          <div class="play-form-layout">
+            <section class="play-form-main">
+              ${title('房间设置', '选题与规则')}
+              <div class="play-field-row three"><div class="play-field"><label>类型</label><div class="play-select">全部 <i>⌄</i></div></div><div class="play-field"><label>难度</label><div class="play-select">全部 <i>⌄</i></div></div><div class="play-field"><label>恐怖程度</label><div class="play-select">全部 <i>⌄</i></div></div></div>
+              <div class="play-field"><label>题目</label><div class="play-select strong">酒吧里的一杯水 · 本格 · 难度 2/5 <i>⌄</i></div></div>
+              <div class="play-field-row"><div class="play-field"><label>玩法</label><div class="play-segment"><b>共探</b><span>竞答</span></div></div><div class="play-field"><label>玩家人数上限</label><div class="play-stepper"><span>−</span><b>6</b><span>＋</span></div></div></div>
+              <div class="play-checks"><div><span class="play-check">✓</span><p><b>我来主持</b><small>主持人掌握汤底，负责回答和判定</small></p></div><div><span class="play-check">✓</span><p><b>在大厅公开</b><small>其他玩家可从公开房间列表加入</small></p></div></div>
+              <div class="play-form-actions"><button class="play-main-button">确认创建</button><button class="play-line-button">取消</button></div>
+            </section>
+            <aside class="play-form-preview"><span>SELECTED STORY / 题目预览</span><h2>酒吧里的一杯水</h2><p>${soup}</p><div>${chip('本格')}${chip('难度 2/5', 'cyan')}${chip('恐怖 1/5', 'coral')}</div><small>汤底仅对本局主持人可见</small></aside>
+          </div>`
+      },
+      '10': {
+        title: '等待开局', sub: '主持人与玩家就位后，可以开始游戏。', area: '当前房间',
+        content: `
+          <div class="play-room-toolbar"><div><span class="play-kicker">WAITING ROOM</span><h2>酒吧里的一杯水</h2><p>共探 · 等待开始 · 本格 · 难度 2/5 · 恐怖 1/5</p></div><div class="play-code"><small>房间码</small><strong>H7K2Q9</strong><button>复制房间码</button></div></div>
+          <div class="play-wait-layout"><div>
+            ${soupExcerpt}
+            <div class="play-wait-action"><b>主持人和玩家已就位，可以开始。</b><div><button class="play-main-button">开始游戏</button><button class="play-line-button">修改设置</button><button class="play-text-button">关闭房间</button></div></div>
+          </div><aside class="play-members">
+            <div class="play-members-title"><h3>成员</h3><span>2 / 6 玩家</span></div>
+            <div class="play-member"><i>房</i><div><b>king</b><span>房主 · 主持</span></div><em>已就位</em></div>
+            <div class="play-member"><i>舟</i><div><b>paperboat_26</b><span>玩家</span></div><em>已就位</em></div>
+            <div class="play-member"><i>灯</i><div><b>lamplight_26</b><span>玩家</span></div><em>已就位</em></div>
+            <div class="play-members-note">等待其他成员加入 · 玩家可申请主持</div>
+          </aside></div>`
+      },
+      '11': {
+        title: '共探对局', sub: '向主持人提问，逐步还原事件的真相。', area: '当前房间',
+        content: `
+          <div class="play-game-top"><div><span class="play-kicker">ROOM H7K2Q9 / 玩家视角</span><h2>酒吧里的一杯水</h2></div><div>${chip('共探', 'coral')}${chip('进行中', 'cyan')}<button class="play-text-button">退出玩家席位</button></div></div>
+          <div class="play-game-layout"><div class="play-game-main">
+            ${soupExcerpt}
+            <div class="play-question"><label>向主持人提问</label><div><input placeholder="输入一个可以回答是、否或无关的问题" /><button class="play-main-button">发送问题</button></div></div>
+            <div class="play-restore"><div><label>还原真相</label><small>仅你和主持人可见</small></div><textarea placeholder="把完整推理单独提交给主持人"></textarea><div><button class="play-line-button">提交还原</button><button class="play-text-button">申请查看汤底</button></div></div>
+          </div><aside class="play-event-side"><div class="play-events-title"><h3>对局记录</h3><span>3 条</span></div><div class="play-event"><small>paperboat_26 · 20:18</small><p>这个人当时在打嗝吗？</p><b>主持回答：是</b></div><div class="play-event"><small>lamplight_26 · 20:19</small><p>酒保想伤害他吗？</p><b>主持回答：否</b></div><div class="play-event"><small>paperboat_26 · 20:20</small><p>那杯水很特殊吗？</p><b>主持回答：无关</b></div></aside></div>`
+      },
+      '12': {
+        title: '主持对局', sub: '回答玩家问题，判定私有还原。', area: '当前房间',
+        content: `
+          <div class="play-game-top"><div><span class="play-kicker">ROOM H7K2Q9 / 主持视角</span><h2>酒吧里的一杯水</h2></div><div>${chip('共探', 'coral')}${chip('进行中', 'cyan')}<button class="play-text-button">返回大厅</button></div></div>
+          <div class="play-host-layout"><div>
+            <div class="play-host-story"><span>汤面</span><p>${soup}</p><div class="play-host-answer"><b>汤底 · 仅主持可见</b><p>${answer}</p></div></div>
+            <div class="play-host-members"><b>成员</b><span>king · 主持</span><span>paperboat_26 · 玩家</span><span>lamplight_26 · 玩家</span></div>
+          </div><section class="play-host-queue">
+            ${title('待处理', '2 项')}
+            <article><div class="play-queue-head"><span>玩家提问</span><small>paperboat_26 · 20:21</small></div><p>酒保认识这个人吗？</p><div class="play-answer-buttons"><button>是</button><button>否</button><button>无关</button></div></article>
+            <article><div class="play-queue-head"><span>私有还原</span><small>lamplight_26 · 20:22</small></div><p>这个人打嗝，酒保举枪把他吓好，所以不需要水了。</p><div class="play-answer-buttons judge"><button>正确</button><button>错误</button><button>不完整</button></div></article>
+            <div class="play-queue-foot">玩家的还原内容不会向其他玩家公开</div>
+          </section></div>`
+      },
+      '13': {
+        title: '单人模式', sub: '选择一道题，与 AI 主持单独推理。', area: '单人模式',
+        content: `
+          <div class="play-solo-intro"><div><span class="play-kicker">SOLO / AI HOST</span><h2>选择题目</h2><p>向 AI 主持提问，也可以随时提交完整还原。</p></div><div class="play-solo-mark">?</div></div>
+          <div class="play-solo-layout"><section class="play-solo-new">
+            ${title('开始新对局', '选择题目')}
+            <div class="play-field-row three"><div class="play-field"><label>类型</label><div class="play-select">全部 <i>⌄</i></div></div><div class="play-field"><label>难度</label><div class="play-select">全部 <i>⌄</i></div></div><div class="play-field"><label>恐怖程度</label><div class="play-select">全部 <i>⌄</i></div></div></div>
+            <div class="play-field"><label>题目</label><div class="play-select strong">酒吧里的一杯水 · 本格 · 难度 2/5 <i>⌄</i></div></div>
+            <div class="play-solo-selected"><b>酒吧里的一杯水</b><p>${soup}</p></div>
+            <button class="play-main-button">开始推理 →</button>
+          </section><aside class="play-solo-history">${title('我的对局', '刷新 ↻')}<div class="play-history-row"><b>酒吧里的一杯水</b><span>推理中</span><button>继续 →</button></div><div class="play-history-row"><b>电梯里的男人</b><span>已结束</span><button>回看 →</button></div><div class="play-history-row"><b>深夜的敲门声</b><span>已结束</span><button>回看 →</button></div></aside></div>`
+      },
+      '14': {
+        title: '单人推理', sub: 'AI 主持会回答「是」「否」「无关」。', area: '单人模式',
+        content: `
+          <div class="play-game-top"><div><span class="play-kicker">SOLO / AI HOST</span><h2>酒吧里的一杯水</h2></div><div>${chip('推理中', 'cyan')}<button class="play-text-button">选择其他题目</button></div></div>
+          <div class="play-solo-game"><div class="play-solo-left">
+            ${soupExcerpt}
+            <div class="play-question"><label>向 AI 主持提问</label><div><input placeholder="输入一个可以回答是、否或无关的问题" /><button class="play-main-button">发送问题</button></div></div>
+            <div class="play-restore"><label>还原真相</label><textarea placeholder="写下你推测的完整真相"></textarea><div><button class="play-line-button">提交还原</button><button class="play-text-button">查看汤底并结束</button></div></div>
+          </div><aside class="play-solo-chat"><div class="play-events-title"><h3>推理记录</h3><span>3 条</span></div><div class="play-chat-line"><small>提问 · 20:18</small><p>那个人很口渴吗？</p><b>AI 主持：否</b></div><div class="play-chat-line"><small>提问 · 20:19</small><p>他当时身体不舒服吗？</p><b>AI 主持：是</b></div><div class="play-chat-line"><small>提问 · 20:20</small><p>酒保真的想开枪吗？</p><b>AI 主持：否</b></div></aside></div>`
+      },
+      '15': {
+        title: '对局结束', sub: '查看汤底，回看这场推理。', area: '单人模式',
+        content: `
+          <div class="play-finish-top"><div><span class="play-kicker">SOLO / FINISHED</span><h2>酒吧里的一杯水</h2><p>本局已结束</p></div><button class="play-main-button">换一道题 →</button></div>
+          <div class="play-finish-layout"><div><div class="play-finish-surface"><span>汤面</span><p>${soup}</p></div><div class="play-finish-answer"><span>汤底</span><h3>真相揭晓</h3><p>${answer}</p></div></div><aside class="play-finish-history"><div class="play-events-title"><h3>推理记录</h3><span>回看</span></div><div class="play-chat-line"><small>提问</small><p>那个人很口渴吗？</p><b>AI 主持：否</b></div><div class="play-chat-line"><small>提问</small><p>他当时身体不舒服吗？</p><b>AI 主持：是</b></div><div class="play-chat-line"><small>查看汤底</small><p>本局结束</p></div></aside></div>`
+      }
+    }
+
+    const current = pages[page] || pages['08']
+    const nav = ['首页', '题目社区', '房间大厅', '单人模式']
+    const roomPage = Number(page) >= 10 && Number(page) <= 12
+    const soloPage = Number(page) >= 13
+    const rail = [
+      ['01', '题目社区', false],
+      ['02', '房间大厅', !roomPage && !soloPage],
+      ...(roomPage ? [['03', '当前房间', true]] : []),
+      ['04', '单人模式', soloPage]
+    ]
+    document.body.innerHTML = `<div class="frame"><header class="topbar"><div class="brand">海龟汤</div><nav class="topnav">${nav.map(item => `<span class="${item === (roomPage ? '房间大厅' : current.area) ? 'active' : ''}">${item}</span>`).join('')}</nav><div class="avatar">◉ &nbsp; king</div></header><div class="body"><section class="hero"><div class="play-hero-number">?</div><div class="play-hero-content"><div class="eyebrow">TURTLE SOUP / ${current.area}</div><h1>${current.title}</h1><p>${current.sub}</p></div></section><div class="play-workspace"><aside class="play-rail"><div class="play-rail-label">推理入口</div>${rail.map(([id, label, active]) => `<div class="play-rail-link ${active ? 'active' : ''}"><small>${id}</small><span>${label}</span></div>`).join('')}<div class="play-rail-footer">海龟汤 / TURTLE SOUP</div></aside><main class="play-stage">${current.content}</main></div></div></div>`
+  </script>
+</body>
+</html>

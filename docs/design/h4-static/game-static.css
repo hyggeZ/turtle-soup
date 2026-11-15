@@ -1,0 +1,171 @@
+/* 游戏页面静态稿：沿用 H4 色彩，内容以留白和细分隔线组织。 */
+@import url('./theme.css');
+
+body { background: var(--night); }
+button { cursor: default; }
+.game-frame { background: var(--paper); }
+.game-topbar { position: relative; z-index: 4; height: 74px; padding: 0 46px; box-shadow: 0 3px 0 var(--coral); }
+.game-topbar .brand { font-size: 26px; }
+.game-topbar .topnav { margin-left: 65px; margin-right: auto; gap: 34px; }
+.game-topbar .topnav span { white-space: nowrap; }
+.game-topbar .user-end { display: flex; align-items: center; gap: 22px; white-space: nowrap; font-size: 14px; }
+.game-topbar .user-end .write-link { color: #f5a49c; font-weight: 750; }
+.game-topbar .avatar { background: #ffffff1c; border-radius: 2px; padding: 8px 11px; }
+.game-topbar .login-link { color: #fff7f1; }
+.logo-mark { display: inline-block; width: 29px; height: 25px; margin-right: 10px; vertical-align: -5px; border: 3px solid var(--cyan); border-radius: 50% 50% 48% 48%; position: relative; }
+.logo-mark::before, .logo-mark::after { content: ''; position: absolute; width: 7px; height: 7px; border: 2px solid var(--cyan); border-radius: 50%; top: 5px; }
+.logo-mark::before { left: -8px; }.logo-mark::after { right: -8px; }
+
+/* 主页把选定插画作为完整场景；入口按主次关系分布。 */
+.home-stage { position: relative; height: 826px; overflow: hidden; color: #fff; background: linear-gradient(90deg,#1e1731bb 0%,#2218318a 45%,#23182d08 82%),url('../../../web/public/assets/home-city.png') center 49%/cover; }
+.home-stage::after { content: ''; pointer-events: none; position: absolute; inset: 0; background: linear-gradient(0deg,#130f22c6 0%,transparent 39%); }
+.home-stage .city-title { position: absolute; z-index: 1; left: 81px; top: 65px; }
+.home-stage .city-title .issue { margin: 0 0 8px; color: var(--cyan); font-size: 13px; font-weight: 800; letter-spacing: .17em; }
+.home-stage h1 { margin: 0; font-size: 54px; line-height: 1.14; letter-spacing: .04em; text-shadow: 2px 3px 0 #160f26; }
+.home-stage .city-title .underline { width: 181px; height: 7px; margin-top: 17px; background: var(--coral); transform: skewX(-25deg); }
+.home-menu { position: absolute; z-index: 1; left: 77px; top: 260px; width: 675px; }
+.home-main { height: 180px; padding: 35px 37px; position: relative; overflow: hidden; background: linear-gradient(110deg,#ee6d68 0%,#d95564 75%,#a94158 100%); box-shadow: 12px 13px 0 #160f24bd; clip-path: polygon(0 0,100% 0,94% 100%,0 100%); }
+.home-main::before { content: '?'; position: absolute; font-size: 230px; font-weight: 900; color: #ffffff19; right: 53px; top: -48px; transform: rotate(10deg); }
+.home-main .menu-index { color: #fff5d7; font-size: 13px; letter-spacing: .13em; font-weight: 700; }
+.home-main h2 { margin: 8px 0 5px; font-size: 34px; letter-spacing: .04em; }
+.home-main p, .home-tile p { margin: 0; color: #fff5f4; font-size: 14px; }
+.home-main .go-arrow { position: absolute; right: 65px; bottom: 38px; font-size: 39px; line-height: 1; }
+.home-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 21px; width: 648px; }
+.home-tile { height: 153px; padding: 25px 29px; background: #32213fe8; box-shadow: 7px 8px 0 #170f25b8; border-top: 5px solid var(--cyan); }
+.home-tile:nth-child(2) { border-color: var(--gold); background: #493047e8; }
+.home-tile .menu-index { font-size: 12px; letter-spacing: .11em; color: var(--cyan); font-weight: 800; }
+.home-tile:nth-child(2) .menu-index { color: var(--gold); }
+.home-tile h3 { margin: 11px 0 5px; font-size: 23px; }
+.home-stage .bottom-note { position: absolute; z-index: 1; left: 82px; bottom: 38px; color: #d6cbd9; font-size: 13px; letter-spacing: .05em; }
+.home-stage .bottom-note::before { content: ''; display: inline-block; width: 23px; height: 2px; margin-right: 9px; vertical-align: 4px; background: var(--coral); }
+
+/* 内页：固定侧栏、雨夜横幅、浅色内容。 */
+.game-layout { display: flex; height: 826px; }
+.game-side { width: 192px; flex: none; height: 826px; padding: 35px 0; background: linear-gradient(180deg,#35233f,#261a32); color: #c8b8ca; position: relative; }
+.game-side .side-label { margin: 0 22px 27px; color: #8fbfc8; font-size: 11px; letter-spacing: .18em; font-weight: 800; }
+.game-side .side-item { display: flex; gap: 11px; align-items: center; height: 52px; padding: 0 22px; font-size: 15px; }
+.game-side .side-item.active { color: #fff; font-weight: 800; background: #ffffff13; position: relative; }
+.game-side .side-item.active::before { content:''; position:absolute; top:0;bottom:0;left:0;width:5px;background:var(--coral); }
+.game-side .side-icon { width: 20px; text-align: center; font-size: 18px; color: var(--cyan); }
+.game-side .side-item.active .side-icon { color: var(--coral); }
+.game-side .side-foot { position: absolute; bottom: 30px; left: 22px; color: #8d7b97; font-size: 12px; }
+.game-page { width: 1248px; min-width: 0; overflow: hidden; background: #f8f2f0; }
+.game-banner { height: 154px; position: relative; padding: 32px 55px; color: #fff; overflow: hidden; background: linear-gradient(90deg,#261931f7 0%,#352341dd 55%,#2818318a 100%),url('../../../web/public/assets/room-city.png') center 46%/cover; }
+.game-banner::after { content:''; position:absolute; width:103px;height:6px;left:55px;bottom:0;background:var(--coral);transform:skewX(-22deg); }
+.game-banner .eyebrow { margin-bottom: 5px; color: var(--cyan); font-weight: 800; letter-spacing: .2em; }
+.game-banner h1 { margin: 0; font-size: 36px; line-height: 1.3; }
+.game-banner .banner-action { position:absolute; right:57px;bottom:43px; }
+.game-content { height:672px; overflow:hidden; padding:34px 55px 45px; }
+.game-content .crumb { font-size:13px;color:#896e89;margin:0 0 18px; }
+.game-content .crumb b { color:var(--ink); }
+.game-content .page-subtitle { margin: -8px 0 24px; color: var(--muted); font-size: 14px; }
+.small-rule { width: 42px; height: 4px; background: var(--coral); transform: skewX(-20deg); }
+.fine-line { height:1px; background:var(--line); }
+.control-button { border:0; background:var(--night-2); color:white; padding:11px 17px; font-size:13px; font-weight:750; }
+.control-button.coral { background:var(--coral); }
+.outline-button { background:transparent;border:1px solid #cbbccb;color:var(--plum);padding:9px 15px;font-size:13px;font-weight:750; }
+.text-action { color:var(--coral-deep);font-size:13px;font-weight:800; }
+.meta-text { color:#887788;font-size:12px; }
+
+/* 登录与注册：表单同一套字段样式。 */
+.auth-scene { height:826px; display:flex; align-items:center; padding-left:85px; background:linear-gradient(90deg,#20172de8 0%,#2d1d3acc 48%,#1c14281a 100%),url('../../../web/public/assets/room-city.png') center center/cover; }
+.auth-sheet { position:relative;width:500px; min-height:610px; padding:42px 50px 43px; background:#fffaf5; box-shadow:12px 13px 0 #0f0b1f8a; }
+.auth-sheet::before { content:'';position:absolute;top:0;left:0;width:100%;height:6px;background:linear-gradient(90deg,var(--coral) 0 54%,var(--cyan) 54% 78%,var(--gold) 78%); }
+.auth-sheet .auth-back { color:#937f91;font-size:13px;margin-bottom:26px; }
+.auth-sheet .auth-eyebrow { color:#b85664;font-size:12px;font-weight:800;letter-spacing:.17em; }
+.auth-sheet h1 { margin:7px 0 7px;font-size:36px; }
+.auth-sheet .auth-intro { margin:0 0 30px;color:#806f81;font-size:14px; }
+.auth-field { display:block;margin:0 0 22px; }
+.auth-field span { display:block;margin-bottom:9px;color:#49364b;font-size:14px;font-weight:750; }
+.auth-field .fake-input { height:47px;padding:12px 14px;background:#fff;border:1px solid #dcceda;color:#ad9fac;font-size:14px; }
+.auth-submit { width:100%;height:48px;margin:6px 0 23px;background:var(--coral);border:0;color:#fff;font-size:16px;font-weight:850;box-shadow:4px 4px 0 var(--night-2); }
+.auth-switch { text-align:center;color:#806f81;font-size:13px; }
+.auth-switch b {color:#b64d5a;}
+.auth-scene .auth-side-copy { margin-left:120px; margin-top:215px;color:#fff; }
+.auth-side-copy .quote { margin:0;font-size:42px;font-weight:900;line-height:1.35;text-shadow:3px 4px 0 #1b1026; }
+.auth-side-copy .quote-line { width:113px;height:6px;margin-top:22px;background:var(--cyan);transform:skewX(-24deg); }
+
+/* 社区列表：题面作为主体，题目之间只用细线分隔。 */
+.community-grid { display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:36px; }
+.community-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:13px; }
+.community-head h2 { margin:0;font-size:21px; }
+.list-soup { padding:19px 0 20px;border-bottom:1px solid var(--line); }
+.list-soup:first-of-type { border-top:3px solid #d8c4d2; }
+.list-soup h3 { margin:0 0 9px;font-size:22px;line-height:1.35; }
+.list-soup .surface { margin:0 0 12px;color:#55485a;font-size:14px;line-height:1.7; }
+.soup-tags { display:flex;gap:7px;align-items:center; }
+.soup-tags span { padding:4px 8px;background:#efe5ed;color:#654969;font-size:11px;font-weight:700; }
+.soup-tags span:first-child { background:#f9dfdc;color:#ad5056; }
+.list-bottom { display:flex;justify-content:space-between;margin-top:12px;color:#8a7b8a;font-size:12px; }
+.list-bottom b { color:#604866;font-weight:750; }
+.community-aside { padding:23px 21px;background:#ede4eb;height:365px; }
+.community-aside h3 { margin:0 0 15px;font-size:18px; }
+.community-aside p { color:#786878;font-size:13px;line-height:1.7; }
+.community-aside .aside-rule { margin:20px 0;border-top:1px solid #d7c8d6; }
+.community-aside .aside-link { display:block;margin-top:13px;color:#ab555e;font-size:13px;font-weight:750; }
+
+/* 详情与评论。 */
+.detail-grid { display:grid;grid-template-columns:minmax(0,1fr) 228px;gap:35px; }
+.detail-main .detail-title { margin:0 0 15px;font-size:32px; }
+.detail-main .author { margin:0 0 24px;color:#88778a;font-size:13px; }
+.detail-main .soup-surface { margin:0 0 25px;padding:23px 26px;background:#fffdfa;border-left:6px solid var(--coral);font-size:18px;line-height:1.9;box-shadow:0 8px 23px #2a18300b; }
+.detail-actions { display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:27px; }
+.detail-actions .control-button { white-space:nowrap; }
+.detail-comments h3 { margin:0 0 14px;font-size:20px; }
+.comment-compose { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
+.comment-compose .comment-input { flex:1;height:43px;padding:11px 14px;border:1px solid #dacdda;background:#fff;color:#aa9dab;font-size:13px; }
+.comment-compose .control-button { height:43px; }
+.comment-spoiler { color:#7d6c7e;font-size:12px; }
+.comment-row { padding:15px 0;border-top:1px solid var(--line); }
+.comment-row .comment-name { color:#684869;font-size:13px;font-weight:750; }
+.comment-row p { margin:6px 0 0;color:#58485d;font-size:14px; }
+.detail-aside { padding:25px 21px;background:#ede5eb;height:330px; }
+.detail-aside h3 { margin:0 0 18px;font-size:18px; }
+.detail-aside p { margin:0 0 9px;color:#746174;font-size:13px; }
+.detail-aside .aside-tag { display:inline-block;margin:0 5px 10px 0;padding:6px 9px;background:#fffaf7;font-size:12px;color:#694f70; }
+.detail-aside .fine-line { margin:16px 0; }
+
+/* 题目编辑器：主编辑区与发布设置分开。 */
+.editor-grid { display:grid;grid-template-columns:minmax(0,1fr) 276px;gap:34px; }
+.editor-main { padding:0; }
+.editor-head { display:flex;justify-content:space-between;align-items:center;margin-bottom:15px; }
+.editor-head h2 { margin:0;font-size:22px; }
+.editor-field { margin:0 0 17px; }
+.editor-field label { display:block;margin:0 0 8px;font-size:13px;font-weight:800;color:#58445b; }
+.editor-input { width:100%;padding:12px 14px;border:1px solid #ddcfda;background:#fffdfa;color:var(--ink);font-size:14px; }
+.editor-input.title { height:44px; }
+.editor-input.textarea { line-height:1.6; }
+.editor-input.surface { height:111px; }
+.editor-input.answer { height:151px; }
+.editor-input.hint { color:#aa9eaa; }
+.editor-foot { display:flex;align-items:center;gap:13px;margin-top:5px; }
+.editor-aside { height:468px;padding:25px 23px;background:#eee5eb; }
+.editor-aside h3 { margin:0 0 18px;font-size:18px; }
+.editor-option { margin:0 0 21px; }
+.editor-option .option-label { display:block;margin-bottom:9px;font-size:12px;color:#6e596d;font-weight:800; }
+.editor-option .option-select { display:flex;justify-content:space-between;align-items:center;min-height:39px;padding:8px 11px;background:#fffaf7;border-bottom:2px solid #d6b7c7;font-size:13px; }
+.editor-aside .side-explain { margin:15px 0 0;color:#856f84;font-size:12px;line-height:1.7; }
+
+/* 个人主页：资料横幅与发布内容。 */
+.profile-banner { height:190px;padding:31px 51px;background:linear-gradient(90deg,#271b35e8,#4b3059bf),url('../../../web/public/assets/room-city.png') center 65%/cover;color:#fff; }
+.profile-banner .back { color:#b6d5d7;font-size:12px; }
+.profile-banner .profile-row { display:flex;align-items:center;gap:19px;margin-top:19px; }
+.profile-banner .profile-avatar { width:75px;height:75px;display:grid;place-items:center;border:3px solid #d9aead;background:#61415f;font-size:35px;font-weight:900; }
+.profile-banner h1 { margin:0 0 2px;font-size:29px; }
+.profile-banner .handle { color:#d0c2d1;font-size:13px; }
+.profile-banner .edit-link { margin-left:auto;padding:10px 18px;background:#f3e9e7;color:#47304f;font-size:13px;font-weight:800; }
+.profile-content { height:636px;padding:34px 55px;background:#f8f2f0;display:grid;grid-template-columns:1fr 280px;gap:38px; }
+.profile-content h2 { margin:0 0 18px;font-size:21px; }
+.profile-content .profile-soup { padding:20px 0;border-top:1px solid var(--line); }
+.profile-content .profile-soup h3 { margin:0 0 8px;font-size:21px; }
+.profile-content .profile-soup p { margin:0 0 10px;color:#67576a;font-size:14px;line-height:1.6; }
+.profile-content .profile-soup .soup-tags { margin-bottom:8px; }
+.profile-empty { display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding:28px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line); }
+.profile-empty .empty-mark { color:#d4aebc;font-size:70px;font-weight:900;line-height:1;margin-right:24px; }
+.profile-empty .empty-title { margin:0 0 6px;font-size:18px;font-weight:800; }
+.profile-empty .empty-copy { margin:0;color:#887789;font-size:13px; }
+.profile-side { padding:25px 23px;background:#ede5eb;height:281px; }
+.profile-side h3 { margin:0 0 18px;font-size:18px; }
+.profile-side .profile-info { margin:0 0 13px;color:#6e5d70;font-size:13px; }
+.profile-side .profile-info b { color:#34253b; }
+.profile-side .fine-line { margin:18px 0; }

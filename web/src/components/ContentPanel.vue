@@ -100,7 +100,6 @@ onUnmounted(() => { loadVersion++ })
         <h2>题目列表</h2>
         <span>已显示 {{ items.length }} 道题</span>
       </div>
-      <p class="muted">已开局对局不受隐藏影响；作者删除的题目不可恢复。</p>
       <form class="inline-form admin-search" @submit.prevent="load">
         <input v-model="query" aria-label="搜索题目或作者" maxlength="50" placeholder="搜索题目或作者" />
         <select v-model="status" aria-label="题目状态">
@@ -109,38 +108,42 @@ onUnmounted(() => { loadVersion++ })
           <option value="hidden">已隐藏</option>
           <option value="deleted">作者已删除</option>
         </select>
-        <button class="admin-search-button">筛选</button>
+        <button type="submit" class="admin-search-button">筛选</button>
       </form>
-      <p v-if="error" role="alert">{{ error }}</p>
-      <p v-if="message" role="status">{{ message }}</p>
-      <p v-if="loading" role="status">正在加载题目…</p>
-      <p v-else-if="!items.length && !error" class="muted">没有符合条件的题目。</p>
-      <div v-if="items.length" class="admin-table-wrap">
-        <table class="simple-table">
+      <p v-if="error" class="admin-feedback error" role="alert">{{ error }}</p>
+      <p v-if="message" class="admin-feedback success" role="status">{{ message }}</p>
+      <p class="admin-scroll-hint">左右滑动表格查看操作</p>
+      <div class="admin-table-wrap">
+        <table class="simple-table" aria-label="题目列表">
           <thead><tr><th>题目</th><th>作者</th><th>分类</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="item in items" :key="item.id">
               <td>
-                <strong>{{ item.title }}</strong>
+                <strong class="admin-item-name">{{ item.title }}</strong>
                 <details><summary>查看汤面</summary><p class="admin-soup-surface">{{ item.surface }}</p></details>
               </td>
-              <td>@{{ item.author }}<br /><span class="muted">{{ item.authorRole === 'admin' ? '管理员' : '用户' }}</span></td>
-              <td>{{ item.genre }} · 难度 {{ item.difficulty }}/5 · 恐怖 {{ item.horror }}/5</td>
-              <td><span class="admin-status" :class="{ disabled: item.status !== 'visible' }">{{ label(item.status) }}</span></td>
+              <td><span class="admin-author">@{{ item.author }}</span><small>{{ item.authorRole === 'admin' ? '管理员' : '用户' }}</small></td>
+              <td><span class="admin-genre">{{ item.genre }}</span><small>难度 {{ item.difficulty }}/5 · 恐怖 {{ item.horror }}/5</small></td>
+              <td><span class="admin-status" :class="item.status">{{ label(item.status) }}</span></td>
               <td>
-                <button v-if="item.status !== 'deleted'" class="admin-table-button" :disabled="!!busyId" @click="setHidden(item)">
+                <button v-if="item.status !== 'deleted'" type="button" class="admin-table-button" :class="{ alt: item.status === 'hidden' }" :disabled="!!busyId" @click="setHidden(item)">
                   {{ busyId === item.id ? '正在处理…' : item.status === 'hidden' ? '恢复公开' : '隐藏' }}
                 </button>
-                <span v-else class="muted">不可恢复</span>
+                <span v-else class="admin-unavailable">不可恢复</span>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p v-if="moreError" role="alert">{{ moreError }}</p>
-      <button v-if="hasMore" class="admin-secondary-button" :disabled="loadingMore" @click="loadMore">
-        {{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多题目' }}
-      </button>
+      <p v-if="loading" class="admin-empty" role="status">正在加载题目…</p>
+      <p v-else-if="!items.length && !error" class="admin-empty">没有符合条件的题目。</p>
+      <p v-if="moreError" class="admin-feedback error" role="alert">{{ moreError }}</p>
+      <div class="admin-table-footer">
+        <span>已开局对局不受隐藏影响；作者删除的题目不可恢复。</span>
+        <button v-if="hasMore" type="button" class="admin-secondary-button" :disabled="loadingMore" @click="loadMore">
+          {{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多题目 →' }}
+        </button>
+      </div>
     </section>
   </section>
 </template>

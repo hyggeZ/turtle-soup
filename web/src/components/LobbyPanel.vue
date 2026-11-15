@@ -23,8 +23,10 @@ const busy = ref(false)
 const showCreate = ref(!!props.initialSoupId)
 const tab = ref('public')
 const form = reactive({ soupId: props.initialSoupId, mode: 'casual', maxPlayers: 6, public: true, hostSelf: true })
+const selectedSoup = ref(null)
 let loadVersion = 0
 let historyVersion = 0
+let soupVersion = 0
 
 async function load() {
   const version = ++loadVersion
@@ -96,6 +98,14 @@ function refresh() {
   loadHistory()
 }
 
+function roomInfo(room, source) {
+  const mode = room.mode === 'casual' ? '共探' : '竞答'
+  const status = { waiting: '等待开始', active: '进行中', paused: '已暂停', finished: '已结束', closed: '已关闭' }[room.status] || room.status
+  if (source === 'public') return [mode, status, room.genre, `难度 ${room.difficulty}/5`, `恐怖 ${room.horror}/5`].join(' · ')
+  const role = { host: '主持', player: '玩家', spectator: '旁观' }[room.myRole] || '成员'
+  return [mode, status, role, room.public ? '公开' : '私密'].join(' · ')
+}
+
 // 公开房间按末条 ID 加载更早的页面，刷新会重新从第一页开始。
 async function loadMore() {
   if (loading.value || loadingMore.value || !hasMoreRooms.value || !rooms.value.length) return
@@ -149,108 +159,132 @@ watch(() => props.initialSoupId, id => {
   form.soupId = id
   showCreate.value = true
 })
-onUnmounted(() => { loadVersion++; historyVersion++ })
+// 预览只读取公开汤面，玩家不会在建房时看到汤底。
+watch(() => form.soupId, async id => {
+  const version = ++soupVersion
+  selectedSoup.value = null
+  if (!id) return
+  try {
+    const soup = await request(`/api/soups/${id}`)
+    if (version === soupVersion) selectedSoup.value = soup
+  } catch { /* 选题组件会显示具体错误。 */ }
+}, { immediate: true })
+onUnmounted(() => { loadVersion++; historyVersion++; soupVersion++ })
 </script>
 
 <template>
-  <section class="panel lobby-page">
-    <div class="section-head">
-      <h1>房间大厅</h1>
-      <button class="text-button" :disabled="loading || loadingHistory" @click="refresh">刷新</button>
-    </div>
+  <section class="lobby-page">
     <p v-if="error" role="alert">{{ error }}</p>
-    <div class="lobby-actions">
-      <form class="lobby-join" @submit.prevent="join(code)">
-        <input v-model="code" maxlength="32" placeholder="输入房间码" aria-label="房间码" required />
-        <button class="primary-button" :disabled="busy || !code.trim()">加入房间</button>
-      </form>
-      <button class="lobby-create-toggle" type="button" aria-controls="lobby-create-panel" :aria-expanded="showCreate" @click="showCreate = !showCreate">
-        {{ showCreate ? '收起创建' : '创建房间' }}
-      </button>
-    </div>
+    <template v-if="showCreate">
+      <button class="text-button lobby-back" type="button" @click="showCreate = false">← 返回大厅</button>
+      <div class="lobby-create-layout">
+        <section id="lobby-create-panel" class="lobby-create-section">
+          <div class="lobby-create-head">
+            <h2>房间设置</h2><span>选题与规则</span>
+          </div>
+          <form class="lobby-create-form" @submit.prevent="create">
+            <SoupPicker v-model="form.soupId" />
+            <div class="form-row lobby-rule-row">
+              <label>玩法
+                <select v-model="form.mode">
+                  <option value="casual">共探</option>
+                  <option value="competitive">竞答</option>
+                </select>
+              </label>
+              <label>玩家人数上限
+                <input v-model.number="form.maxPlayers" type="number" min="2" max="20" required />
+              </label>
+            </div>
+            <div class="lobby-checks">
+              <label class="check-line"><input v-model="form.hostSelf" type="checkbox" />我来主持</label>
+              <label class="check-line"><input v-model="form.public" type="checkbox" />在大厅公开</label>
+            </div>
+            <p v-if="!form.hostSelf" class="meta">你将以玩家身份入场，等待其他人申请主持。</p>
+            <div class="lobby-create-actions">
+              <button class="primary-button" :disabled="busy || !form.soupId">{{ busy ? '创建中…' : '确认创建' }}</button>
+              <button type="button" class="text-button" @click="showCreate = false">取消</button>
+            </div>
+          </form>
+        </section>
+        <aside class="lobby-soup-preview" aria-label="选中题目预览">
+          <span class="play-kicker">SELECTED STORY / 题目预览</span>
+          <template v-if="selectedSoup">
+            <h3>{{ selectedSoup.title }}</h3>
+            <p>{{ selectedSoup.surface }}</p>
+            <div class="lobby-preview-tags">
+              <span>{{ selectedSoup.genre }}</span>
+              <span>难度 {{ selectedSoup.difficulty }}/5</span>
+              <span>恐怖 {{ selectedSoup.horror }}/5</span>
+            </div>
+          </template>
+          <p v-else class="lobby-preview-empty">选择题目后，这里会显示汤面。</p>
+          <small>汤底仅对本局主持人可见</small>
+        </aside>
+      </div>
+    </template>
 
-    <section v-if="showCreate" id="lobby-create-panel" class="lobby-create-section">
-      <h2>房间设置</h2>
-      <form class="lobby-create-form" @submit.prevent="create">
-        <SoupPicker v-model="form.soupId" />
-        <div class="form-row">
-          <label>玩法
-            <select v-model="form.mode">
-              <option value="casual">共探</option>
-              <option value="competitive">竞答</option>
-            </select>
-          </label>
-          <label>玩家人数上限
-            <input v-model.number="form.maxPlayers" type="number" min="2" max="20" required />
-          </label>
-        </div>
-        <label class="check-line"><input v-model="form.hostSelf" type="checkbox" />我来主持</label>
-        <label class="check-line"><input v-model="form.public" type="checkbox" />在大厅公开</label>
-        <p v-if="!form.hostSelf" class="meta">你将以玩家身份入场，等待其他人申请主持。</p>
-        <button class="primary-button" :disabled="busy || !form.soupId">确认创建</button>
-      </form>
-    </section>
-
-    <div class="lobby-tabs" role="group" aria-label="房间列表">
-      <button id="lobby-tab-public" :class="{ active: tab === 'public' }" :aria-pressed="tab === 'public'" @click="tab = 'public'">公开房间</button>
-      <button v-if="user" id="lobby-tab-mine" :class="{ active: tab === 'mine' }" :aria-pressed="tab === 'mine'" @click="tab = 'mine'">我的房间</button>
-      <button v-if="user" id="lobby-tab-history" :class="{ active: tab === 'history' }" :aria-pressed="tab === 'history'" @click="tab = 'history'">房间记录</button>
-    </div>
-
-    <section v-if="tab === 'public'" id="lobby-panel-public" class="lobby-list-panel" aria-labelledby="lobby-tab-public">
-      <p v-if="loading" role="status" class="muted">正在加载房间…</p>
-      <p v-else-if="!rooms.length && !error" class="empty-state">暂无公开房间。</p>
-      <article v-for="room in rooms" :key="room.id" class="room-row">
+    <template v-else>
+      <div class="lobby-intro">
         <div>
-          <strong>{{ room.title }}</strong>
-          <p class="meta">
-            {{ room.mode === 'casual' ? '共探' : '竞答' }} · {{ room.status === 'waiting' ? '等待开始' : '进行中' }} ·
-            玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.genre }} · 难度 {{ room.difficulty }}/5 · 恐怖 {{ room.horror }}/5
-          </p>
+          <span class="play-kicker">ROOM LOBBY</span>
+          <h2>选择房间</h2>
+          <p>从公开房间加入，或用房间码与朋友会合。</p>
         </div>
-        <button class="small-button" :disabled="busy" @click="join(room.code)">{{ room.status === 'active' && room.mode === 'competitive' ? '旁观' : '进入' }}</button>
-      </article>
-      <p v-if="moreError" role="alert">{{ moreError }}</p>
-      <button v-if="hasMoreRooms" class="small-button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多房间' }}</button>
-    </section>
-
-    <section v-if="user && tab === 'mine'" id="lobby-panel-mine" class="lobby-list-panel" aria-labelledby="lobby-tab-mine">
-      <p v-if="loading" role="status" class="muted">正在加载房间…</p>
-      <p v-else-if="!mine.length && !error" class="empty-state">暂无进行中的房间。</p>
-      <article v-for="room in mine" :key="room.id" class="room-row">
-        <div>
-          <strong>{{ room.title }}</strong>
-          <p class="meta">
-            {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-            {{ room.status === 'waiting' ? '等待开始' : room.status === 'paused' ? '已暂停' : '进行中' }} ·
-            {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
-            玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
-          </p>
-        </div>
-        <button class="small-button" @click="emit('room', room.id)">进入</button>
-      </article>
-    </section>
-
-    <section v-if="user && tab === 'history'" id="lobby-panel-history" class="lobby-list-panel" aria-labelledby="lobby-tab-history">
-      <p v-if="loadingHistory" role="status" class="muted">正在加载房间记录…</p>
-      <p v-else-if="!history.length && !historyError" class="empty-state">暂无房间记录。</p>
-      <article v-for="room in history" :key="room.id" class="room-row">
-        <div>
-          <strong>{{ room.title }}</strong>
-          <p class="meta">
-            {{ room.mode === 'casual' ? '共探' : '竞答' }} ·
-            {{ room.status === 'finished' ? '已结束' : '已关闭' }} ·
-            {{ room.myRole === 'host' ? '主持' : room.myRole === 'player' ? '玩家' : '旁观' }} ·
-            玩家 {{ room.players }}/{{ room.maxPlayers }} · {{ room.public ? '公开' : '私密' }}
-          </p>
-        </div>
-        <button class="small-button" @click="emit('room', room.id)">回看</button>
-      </article>
-      <p v-if="historyError" role="alert">{{ historyError }}</p>
-      <button v-if="!history.length && historyError" class="small-button" @click="loadHistory">重试</button>
-      <button v-if="hasMoreHistory" class="small-button" :disabled="loadingMoreHistory" @click="loadMoreHistory">
-        {{ loadingMoreHistory ? '正在加载…' : historyError ? '重试加载更多' : '加载更多记录' }}
-      </button>
-    </section>
+        <form class="lobby-join" @submit.prevent="join(code)">
+          <label>房间码加入<input v-model="code" maxlength="32" placeholder="输入房间码" required /></label>
+          <button class="small-button" :disabled="busy || !code.trim()">加入房间</button>
+        </form>
+        <button class="primary-button lobby-create-toggle" type="button" aria-controls="lobby-create-panel" :aria-expanded="showCreate" @click="showCreate = true">＋ 创建房间</button>
+      </div>
+      <div class="lobby-tabs" role="group" aria-label="房间列表">
+        <button id="lobby-tab-public" :class="{ active: tab === 'public' }" :aria-pressed="tab === 'public'" @click="tab = 'public'">公开房间</button>
+        <button v-if="user" id="lobby-tab-mine" :class="{ active: tab === 'mine' }" :aria-pressed="tab === 'mine'" @click="tab = 'mine'">我的房间</button>
+        <button v-if="user" id="lobby-tab-history" :class="{ active: tab === 'history' }" :aria-pressed="tab === 'history'" @click="tab = 'history'">房间记录</button>
+        <button class="text-button lobby-refresh" :disabled="loading || loadingHistory" @click="refresh">刷新 ↻</button>
+      </div>
+      <div class="lobby-room-layout">
+        <section v-if="tab === 'public'" id="lobby-panel-public" class="lobby-list-panel" aria-labelledby="lobby-tab-public">
+          <p v-if="loading" role="status" class="muted">正在加载房间…</p>
+          <p v-else-if="!rooms.length && !error" class="empty-state">暂无公开房间。你可以创建一间。</p>
+          <article v-for="(room, index) in rooms" :key="room.id" class="room-row">
+            <span class="room-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div><strong>{{ room.title }}</strong><p class="meta">{{ roomInfo(room, 'public') }}</p></div>
+            <span class="room-count"><b>{{ room.players }}/{{ room.maxPlayers }}</b><small>玩家</small></span>
+            <button class="small-button" :disabled="busy" @click="join(room.code)">{{ room.status === 'active' && room.mode === 'competitive' ? '旁观' : '进入' }} →</button>
+          </article>
+          <p v-if="moreError" role="alert">{{ moreError }}</p>
+          <button v-if="hasMoreRooms" class="text-button lobby-more" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载更多' : '加载更多房间 ↓' }}</button>
+        </section>
+        <section v-if="user && tab === 'mine'" id="lobby-panel-mine" class="lobby-list-panel" aria-labelledby="lobby-tab-mine">
+          <p v-if="loading" role="status" class="muted">正在加载房间…</p>
+          <p v-else-if="!mine.length && !error" class="empty-state">暂无进行中的房间。</p>
+          <article v-for="(room, index) in mine" :key="room.id" class="room-row">
+            <span class="room-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div><strong>{{ room.title }}</strong><p class="meta">{{ roomInfo(room, 'mine') }}</p></div>
+            <span class="room-count"><b>{{ room.players }}/{{ room.maxPlayers }}</b><small>玩家</small></span>
+            <button class="small-button" @click="emit('room', room.id)">进入 →</button>
+          </article>
+        </section>
+        <section v-if="user && tab === 'history'" id="lobby-panel-history" class="lobby-list-panel" aria-labelledby="lobby-tab-history">
+          <p v-if="loadingHistory" role="status" class="muted">正在加载房间记录…</p>
+          <p v-else-if="!history.length && !historyError" class="empty-state">暂无房间记录。</p>
+          <article v-for="(room, index) in history" :key="room.id" class="room-row">
+            <span class="room-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div><strong>{{ room.title }}</strong><p class="meta">{{ roomInfo(room, 'history') }}</p></div>
+            <span class="room-count"><b>{{ room.players }}/{{ room.maxPlayers }}</b><small>玩家</small></span>
+            <button class="small-button" @click="emit('room', room.id)">回看 →</button>
+          </article>
+          <p v-if="historyError" role="alert">{{ historyError }}</p>
+          <button v-if="!history.length && historyError" class="small-button" @click="loadHistory">重试</button>
+          <button v-if="hasMoreHistory" class="text-button lobby-more" :disabled="loadingMoreHistory" @click="loadMoreHistory">{{ loadingMoreHistory ? '正在加载…' : historyError ? '重试加载更多' : '加载更多记录 ↓' }}</button>
+        </section>
+        <aside class="lobby-guide">
+          <span class="play-kicker">房间模式</span>
+          <h3>共探<br />或竞答</h3>
+          <p>共探房间可以在进行中加入。竞答房间开局后只能旁观。</p>
+          <span class="lobby-guide-line"></span>
+        </aside>
+      </div>
+    </template>
   </section>
 </template>

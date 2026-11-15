@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>海龟汤 H4 页面设计</title>
+  <style>
+    :root { font-family: 'Microsoft YaHei', sans-serif; color: #f8f2f0; background: #21172c; }
+    * { box-sizing: border-box; }
+    body { max-width: 1560px; margin: 0 auto; padding: 34px clamp(16px, 4vw, 56px) 70px; }
+    h1 { margin: 0 0 10px; font-size: clamp(25px, 3vw, 36px); }
+    h2 { margin: 40px 0 18px; padding-left: 12px; border-left: 5px solid #ee6e69; font-size: 21px; }
+    p { margin: 0; color: #bcaec2; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    a { display: block; color: inherit; text-decoration: none; }
+    a:hover img { outline: 3px solid #83bdc6; }
+    img { width: 100%; display: block; background: #f8f2f0; }
+    span { display: block; padding: 10px 0; font-size: 14px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>海龟汤 · H4 页面设计</h1>
+  <p>点击图片查看原尺寸。</p>
+  <h2>题目与账号</h2>
+  <div class="grid">
+    <a href="01-home.png"><img src="01-home.png" alt="游戏主页" loading="lazy"><span>01 游戏主页</span></a>
+    <a href="02-login.png"><img src="02-login.png" alt="登录" loading="lazy"><span>02 登录</span></a>
+    <a href="03-register.png"><img src="03-register.png" alt="注册" loading="lazy"><span>03 注册</span></a>
+    <a href="04-community.png"><img src="04-community.png" alt="题目社区" loading="lazy"><span>04 题目社区</span></a>
+    <a href="05-detail.png"><img src="05-detail.png" alt="题目详情" loading="lazy"><span>05 题目详情</span></a>
+    <a href="06-editor.png"><img src="06-editor.png" alt="发布题目" loading="lazy"><span>06 发布题目</span></a>
+    <a href="07-profile.png"><img src="07-profile.png" alt="个人主页" loading="lazy"><span>07 个人主页</span></a>
+  </div>
+  <h2>房间与单人推理</h2>
+  <div class="grid">
+    <a href="08-lobby.png"><img src="08-lobby.png" alt="房间大厅" loading="lazy"><span>08 房间大厅</span></a>
+    <a href="09-create-room.png"><img src="09-create-room.png" alt="创建房间" loading="lazy"><span>09 创建房间</span></a>
+    <a href="10-waiting-room.png"><img src="10-waiting-room.png" alt="等待中的房间" loading="lazy"><span>10 等待中的房间</span></a>
+    <a href="11-player-room.png"><img src="11-player-room.png" alt="玩家对局" loading="lazy"><span>11 玩家对局</span></a>
+    <a href="12-host-room.png"><img src="12-host-room.png" alt="主持人对局" loading="lazy"><span>12 主持人对局</span></a>
+    <a href="13-solo-select.png"><img src="13-solo-select.png" alt="单人选题" loading="lazy"><span>13 单人选题</span></a>
+    <a href="14-solo-active.png"><img src="14-solo-active.png" alt="单人推理" loading="lazy"><span>14 单人推理</span></a>
+    <a href="15-solo-finished.png"><img src="15-solo-finished.png" alt="单人结束" loading="lazy"><span>15 单人结束</span></a>
+  </div>
+  <h2>管理后台</h2>
+  <div class="grid">
+    <a href="16-admin-login.png"><img src="16-admin-login.png" alt="后台登录" loading="lazy"><span>16 后台登录</span></a>
+    <a href="17-admin-accounts.png"><img src="17-admin-accounts.png" alt="账号管理" loading="lazy"><span>17 账号管理</span></a>
+    <a href="18-admin-create-account.png"><img src="18-admin-create-account.png" alt="创建账号" loading="lazy"><span>18 创建账号</span></a>
+    <a href="19-admin-change-password.png"><img src="19-admin-change-password.png" alt="修改密码" loading="lazy"><span>19 修改密码</span></a>
+    <a href="20-admin-soups.png"><img src="20-admin-soups.png" alt="题目管理" loading="lazy"><span>20 题目管理</span></a>
+    <a href="21-admin-telemetry.png"><img src="21-admin-telemetry.png" alt="运行日志" loading="lazy"><span>21 运行日志</span></a>
+    <a href="22-admin-trace.png"><img src="22-admin-trace.png" alt="请求链路详情" loading="lazy"><span>22 请求链路详情</span></a>
+  </div>
+</body>
+</html>
