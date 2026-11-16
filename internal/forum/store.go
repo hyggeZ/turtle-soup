@@ -319,10 +319,10 @@ func (s *Store) SetRelation(ctx context.Context, table string, user, target int6
 	return tx.Commit(ctx)
 }
 
-// 评论按 ID 倒序翻页，新评论插入时不会挤动下一页的游标。
+// 评论按 ID 倒序翻页；正文一律由显式展开接口读取，不能依赖发布者标记防剧透。
 func (s *Store) ListComments(ctx context.Context, soup, before int64) ([]Comment, error) {
 	rows, err := s.db.Query(ctx, `SELECT c.id,c.author_id,u.username,
-		CASE WHEN c.spoiler THEN '' ELSE c.body END,c.spoiler,c.created_at
+		''::text,c.spoiler,c.created_at
 		FROM comments c JOIN users u ON u.id=c.author_id
 		JOIN soups s ON s.id=c.soup_id
 		WHERE c.soup_id=$1 AND s.deleted_at IS NULL AND s.hidden_at IS NULL
@@ -383,10 +383,10 @@ func (s *Store) AddComment(ctx context.Context, soup, author int64, body string,
 	return tx.Commit(ctx)
 }
 
-// 剧透正文只由显式展开接口读取，普通评论列表始终留空。
-func (s *Store) SpoilerComment(ctx context.Context, soup, comment int64) (string, error) {
+// 所有评论正文只由显式展开接口读取，包括未标记剧透的评论。
+func (s *Store) CommentBody(ctx context.Context, soup, comment int64) (string, error) {
 	var body string
-	err := s.db.QueryRow(ctx, `SELECT body FROM comments WHERE id=$1 AND soup_id=$2 AND spoiler=TRUE`, comment, soup).Scan(&body)
+	err := s.db.QueryRow(ctx, `SELECT body FROM comments WHERE id=$1 AND soup_id=$2`, comment, soup).Scan(&body)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}

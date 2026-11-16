@@ -79,8 +79,8 @@ func TestCommentsCursorAcrossInsert(t *testing.T) {
 	if len(second) != 1 || second[0].ID >= first[99].ID {
 		t.Fatalf("插入后的第二页错误: %+v", second)
 	}
-	if fresh := get(""); fresh[0].Body != "新评论" {
-		t.Fatalf("新评论未显示在首位: %+v", fresh[0])
+	if fresh := get(""); fresh[0].ID <= first[0].ID || fresh[0].Body != "" {
+		t.Fatalf("新评论未在首位隐藏正文: %+v", fresh[0])
 	}
 	for _, before := range []string{"0", "bad"} {
 		response := httptest.NewRecorder()

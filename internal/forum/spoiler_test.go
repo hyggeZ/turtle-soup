@@ -44,7 +44,7 @@ func TestSpoilerRequiresLeavingPlayerSeat(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var soupID, roomID, commentID int64
+	var soupID, roomID, commentID, unmarkedCommentID int64
 	t.Cleanup(func() {
 		if roomID != 0 {
 			_, _ = db.Exec(ctx, `DELETE FROM rooms WHERE id=$1`, roomID)
@@ -62,6 +62,9 @@ func TestSpoilerRequiresLeavingPlayerSeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(ctx, `INSERT INTO comments(soup_id,author_id,body,spoiler) VALUES($1,$2,'这是剧透内容',TRUE) RETURNING id`, soupID, ids[0]).Scan(&commentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `INSERT INTO comments(soup_id,author_id,body,spoiler) VALUES($1,$2,'测试汤底-未标记',FALSE) RETURNING id`, soupID, ids[0]).Scan(&unmarkedCommentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(ctx, `INSERT INTO rooms(code,owner_id,host_id,soup_id,mode,max_players) VALUES($1,$2,$2,$3,'casual',2) RETURNING id`, fmt.Sprintf("S%015d", stamp%1e15), ids[0], soupID).Scan(&roomID); err != nil {
@@ -85,7 +88,7 @@ func TestSpoilerRequiresLeavingPlayerSeat(t *testing.T) {
 		return response
 	}
 	comments := call(http.MethodGet, fmt.Sprintf("/api/soups/%d/comments", soupID))
-	if comments.Code != http.StatusOK || strings.Contains(comments.Body.String(), "这是剧透内容") || !strings.Contains(comments.Body.String(), `"spoiler":true`) {
+	if comments.Code != http.StatusOK || strings.Contains(comments.Body.String(), "这是剧透内容") || strings.Contains(comments.Body.String(), "测试汤底-未标记") || !strings.Contains(comments.Body.String(), `"spoiler":true`) {
 		t.Fatalf("评论列表泄露剧透：%d %s", comments.Code, comments.Body.String())
 	}
 	path := fmt.Sprintf("/api/soups/%d/comments/%d/spoiler", soupID, commentID)
@@ -96,12 +99,21 @@ func TestSpoilerRequiresLeavingPlayerSeat(t *testing.T) {
 	if blocked.Code != http.StatusForbidden || strings.Contains(blocked.Body.String(), "这是剧透内容") {
 		t.Fatalf("玩家展开了剧透：%d %s", blocked.Code, blocked.Body.String())
 	}
+	unmarkedPath := fmt.Sprintf("/api/soups/%d/comments/%d/spoiler", soupID, unmarkedCommentID)
+	blocked = call(http.MethodPost, unmarkedPath)
+	if blocked.Code != http.StatusForbidden || strings.Contains(blocked.Body.String(), "测试汤底-未标记") {
+		t.Fatalf("玩家展开了未标记评论：%d %s", blocked.Code, blocked.Body.String())
+	}
 	if _, err := db.Exec(ctx, `UPDATE room_members SET role='spectator' WHERE room_id=$1 AND user_id=$2`, roomID, ids[1]); err != nil {
 		t.Fatal(err)
 	}
 	opened := call(http.MethodPost, path)
 	if opened.Code != http.StatusOK || !strings.Contains(opened.Body.String(), "这是剧透内容") {
 		t.Fatalf("旁观者无法主动展开：%d %s", opened.Code, opened.Body.String())
+	}
+	opened = call(http.MethodPost, unmarkedPath)
+	if opened.Code != http.StatusOK || !strings.Contains(opened.Body.String(), "测试汤底-未标记") {
+		t.Fatalf("旁观者无法主动展开未标记评论：%d %s", opened.Code, opened.Body.String())
 	}
 	var revealed bool
 	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM soup_reveals WHERE soup_id=$1 AND user_id=$2)`, soupID, ids[1]).Scan(&revealed); err != nil || !revealed {

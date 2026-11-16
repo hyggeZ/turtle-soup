@@ -21,13 +21,13 @@ const posting = ref(false)
 const confirmOpen = ref(false)
 const confirmType = ref('')
 const confirmItem = ref(null)
-const confirmTitle = computed(() => ({ answer: '确定查看汤底？', comment: '确定展开剧透评论？', delete: '确定删除题目？' })[confirmType.value] || '')
+const confirmTitle = computed(() => ({ answer: '确定查看汤底？', comment: '确定查看评论？', delete: '确定删除题目？' })[confirmType.value] || '')
 const confirmMessage = computed(() => ({
   answer: '查看后会知道完整真相，之后不能再以玩家身份参与这道题的对局。',
-  comment: '这条评论包含剧透，展开后不能再以玩家身份参与这道题的对局。',
+  comment: '评论可能包含汤底。查看后不能再以玩家身份参与这道题的对局。',
   delete: '删除后题目不再公开，已有对局记录仍会保留。',
 })[confirmType.value] || '')
-const confirmText = computed(() => ({ answer: '确认查看', comment: '确认展开', delete: '删除题目' })[confirmType.value] || '确定')
+const confirmText = computed(() => ({ answer: '确认查看', comment: '确认查看', delete: '删除题目' })[confirmType.value] || '确定')
 let loadVersion = 0
 let commentsVersion = 0
 
@@ -48,7 +48,9 @@ async function loadComments(id, version, before = 0) {
   try {
     const next = await request(path)
     if (!isCurrent(id, version) || current !== commentsVersion) return
-    comments.value = before ? [...comments.value, ...next] : next
+    // 列表响应只用于展示评论信息；正文必须由主动展开操作取得。
+    const folded = next.map(item => ({ ...item, body: '' }))
+    comments.value = before ? [...comments.value, ...folded] : folded
     hasMoreComments.value = next.length === 100
   } catch (cause) {
     if (isCurrent(id, version) && current === commentsVersion) commentsError.value = cause.message
@@ -76,6 +78,7 @@ async function load() {
   spoiler.value = false
   error.value = ''
   confirmOpen.value = false
+  confirmItem.value = null
   loading.value = true
   try {
     const nextSoup = await request(`/api/soups/${id}`)
@@ -175,7 +178,7 @@ async function deleteSoup() {
   } catch (cause) { error.value = cause.message }
   finally { deleting.value = false }
 }
-watch(() => props.id, load)
+watch(() => [props.id, props.user?.id], load)
 onMounted(load)
 onUnmounted(() => { loadVersion++ })
 </script>
@@ -213,6 +216,7 @@ onUnmounted(() => { loadVersion++ })
 
           <section v-if="!soup.hidden" class="game-paper-panel game-comments">
             <h3>评论 <span class="game-tag">{{ soup.comments }}</span></h3>
+            <p class="game-detail-hint">评论可能包含汤底，需主动确认后查看。</p>
             <form v-if="user" class="game-comment-form" @submit.prevent="addComment">
               <label class="game-field"><span class="game-visually-hidden">发表评论</span><textarea v-model="comment" rows="2" maxlength="500" placeholder="写下你的想法" required></textarea></label>
               <div class="game-comment-controls"><label class="game-check"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label><button class="game-stamp game-stamp--teal game-stamp--small" :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button></div>
@@ -223,7 +227,7 @@ onUnmounted(() => { loadVersion++ })
               <article v-for="item in comments" :key="item.id" class="game-comment">
                 <span class="game-comment-avatar" aria-hidden="true">{{ item.author.slice(0, 1) }}</span>
                 <div><button class="game-text-link" @click="emit('profile', item.authorId)">@{{ item.author }}</button>
-                  <p v-if="item.spoiler && !item.body">剧透评论 <button v-if="user" class="game-text-link" @click="ask('comment', item)">展开</button><span v-else> · 登录后可查看</span></p>
+                  <p v-if="!item.body">{{ item.spoiler ? '剧透评论' : '评论内容已折叠' }} <button v-if="user" class="game-text-link" @click="ask('comment', item)">查看</button><span v-else> · 登录后可查看</span></p>
                   <p v-else>{{ item.body }}</p>
                 </div>
               </article>
@@ -236,6 +240,6 @@ onUnmounted(() => { loadVersion++ })
         <aside class="game-detail-art" aria-label="证物插画"><img src="/assets/evidence-collage.png" alt="雨夜的照片与放大镜" /></aside>
       </div>
     </div>
-    <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :message="confirmMessage" :confirm-text="confirmText" :cancel-text="confirmType === 'delete' ? '保留题目' : '继续推理'" :danger="confirmType === 'delete'" @confirm="confirmed" />
+    <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :message="confirmMessage" :confirm-text="confirmText" :cancel-text="confirmType === 'delete' ? '保留题目' : confirmType === 'comment' ? '取消' : '继续推理'" :danger="confirmType === 'delete'" @confirm="confirmed" />
   </main>
 </template>

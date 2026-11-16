@@ -357,7 +357,7 @@ func (h *Handler) addComment(ctx *gin.Context) {
 	ctx.Status(http.StatusCreated)
 }
 
-// 主动展开剧透等同于查看汤底；正在玩这道题的玩家不能绕过限制。
+// 主动展开任意评论都视作可能看底；正在推理同题的玩家不能读取正文。
 func (h *Handler) commentSpoiler(ctx *gin.Context) {
 	user, ok := h.requiredUser(ctx)
 	if !ok {
@@ -372,7 +372,7 @@ func (h *Handler) commentSpoiler(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "评论 ID 无效"})
 		return
 	}
-	body, err := h.store.SpoilerComment(ctx.Request.Context(), soup, comment)
+	body, err := h.store.CommentBody(ctx.Request.Context(), soup, comment)
 	if err != nil {
 		replyError(ctx, err)
 		return
@@ -386,6 +386,7 @@ func (h *Handler) commentSpoiler(ctx *gin.Context) {
 		replyError(ctx, err)
 		return
 	}
+	ctx.Header("Cache-Control", "private, no-store")
 	ctx.JSON(http.StatusOK, gin.H{"body": body})
 }
 
