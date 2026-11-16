@@ -100,17 +100,6 @@ func scanSoup(row pgx.Row, detail bool) (Soup, error) {
 	return soup, err
 }
 
-func (s *Store) List(ctx context.Context, viewer int64, filter ListFilter, limit, offset int) ([]Soup, error) {
-	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id = s.author_id
-		WHERE s.deleted_at IS NULL AND (s.hidden_at IS NULL OR s.author_id=$1 AND s.author_id=$2)
-		AND ($2 = 0 OR s.author_id = $2)
-		AND ($3 = '' OR s.genre = $3) AND ($4 = 0 OR s.difficulty = $4)
-		AND ($5 = -1 OR s.horror = $5)
-		ORDER BY s.created_at DESC, s.id DESC LIMIT $6 OFFSET $7`
-	rows, err := s.db.Query(ctx, query, viewer, filter.AuthorID, filter.Genre, filter.Difficulty, filter.Horror, limit, offset)
-	return scanSoupRows(rows, err)
-}
-
 // ListAfter 使用现有时间索引从游标之后读取，避免深页 OFFSET 扫描。
 func (s *Store) ListAfter(ctx context.Context, viewer int64, filter ListFilter, limit int, cursor *ListCursor) ([]Soup, error) {
 	query := `SELECT ` + soupFields + ` FROM soups s JOIN users u ON u.id=s.author_id

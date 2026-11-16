@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>海龟汤 · 后台界面设计</title>
+  <link rel="stylesheet" href="admin.css" />
+  <script>document.documentElement.dataset.page = new URLSearchParams(location.search).get('page') || 'home'</script>
+</head>
+<body>
+  <div class="night-scene" aria-hidden="true"></div>
+
+  <main id="home" class="screen admin-home">
+    <div class="home-top">
+      <a class="back-ticket" href="/">← 游戏首页</a>
+      <div class="identity-ticket"><span class="identity-dot">K</span><span><strong>king</strong><small>超级管理员</small></span><a href="#">退出</a></div>
+    </div>
+    <div class="home-title">
+      <p class="eyebrow">TURTLE SOUP · CONTROL ROOM</p>
+      <div class="title-line"><span class="turtle-mark" aria-hidden="true"></span><h1>管理后台</h1></div>
+      <p>选择一项管理工作</p>
+    </div>
+    <div class="module-grid">
+      <a class="module-ticket module-users" href="?page=accounts">
+        <span class="module-top"><span>01 / ACCOUNTS</span><span class="module-seal">◎</span></span>
+        <svg viewBox="0 0 96 96" class="module-icon" aria-hidden="true"><circle cx="48" cy="28" r="12"/><path d="M24 74c0-15 10-25 24-25s24 10 24 25"/><circle cx="19" cy="40" r="7"/><path d="M7 66c1-10 6-17 14-19"/><circle cx="77" cy="40" r="7"/><path d="M89 66c-1-10-6-17-14-19"/></svg>
+        <h2>账号管理</h2><p>查看账号、创建管理员与用户</p>
+        <span class="module-enter">进入账号管理 <b>→</b></span>
+      </a>
+      <a class="module-ticket module-soups" href="?page=soups">
+        <span class="module-top"><span>02 / STORIES</span><span class="module-seal">◇</span></span>
+        <svg viewBox="0 0 96 96" class="module-icon" aria-hidden="true"><path d="M14 19c13-4 25-3 34 3 9-6 21-7 34-3v53c-13-4-25-3-34 3-9-6-21-7-34-3z"/><path d="M48 22v53M24 34h14M24 46h14M58 34h14M58 46h14"/></svg>
+        <h2>题目管理</h2><p>检查发布内容与公开状态</p>
+        <span class="module-enter">进入题目管理 <b>→</b></span>
+      </a>
+      <a class="module-ticket module-logs" href="?page=logs">
+        <span class="module-top"><span>03 / TRACES</span><span class="module-seal">⌁</span></span>
+        <svg viewBox="0 0 96 96" class="module-icon" aria-hidden="true"><path d="M11 73h74M17 62V44M30 62V29M43 62V49M56 62V20M69 62V37M82 62V27"/><circle cx="56" cy="20" r="4"/></svg>
+        <h2>运行日志</h2><p>查看接口耗时与请求链路</p>
+        <span class="module-enter">查看运行日志 <b>→</b></span>
+      </a>
+    </div>
+  </main>
+
+  <main id="login" class="screen admin-login">
+    <a class="back-ticket" href="/">← 游戏首页</a>
+    <div class="login-layout">
+      <div class="login-intro"><p class="eyebrow">TURTLE SOUP · CONTROL ROOM</p><div class="title-line"><span class="turtle-mark" aria-hidden="true"></span><h1>管理后台</h1></div><span class="intro-stroke" aria-hidden="true"></span></div>
+      <section class="login-paper" aria-labelledby="login-title"><div class="login-paper-head"><span class="modal-symbol key">✳</span><div><p class="eyebrow">ADMIN ACCESS</p><h2 id="login-title">后台登录</h2></div></div><form class="modal-form"><label>用户名<input placeholder="输入用户名" autocomplete="username" /></label><label>密码<input type="password" placeholder="输入密码" autocomplete="current-password" /></label><button class="action-button primary" type="button">登录后台 <span>→</span></button></form></section>
+    </div>
+  </main>
+
+  <main id="accounts" class="screen inner-screen">
+    <div class="page-heading">
+      <a class="back-ticket" href="?page=home">← 返回后台</a>
+      <div><p class="eyebrow">01 / ACCOUNTS</p><h1>账号管理</h1></div>
+      <span class="heading-stamp">账号档案</span>
+    </div>
+    <section class="paper panel-account">
+      <div class="paper-heading"><div><span class="section-number">01</span><h2>账号列表</h2><small>已显示 5 个账号</small></div><a class="action-button primary" href="?page=create"><span>＋</span> 创建账号</a></div>
+      <div class="toolbar"><label class="search-field"><span>⌕</span><input aria-label="搜索用户名" placeholder="搜索用户名" /></label><button class="action-button ink">搜索 <span>→</span></button></div>
+      <div class="mobile-accounts" aria-label="账号列表">
+        <article class="account-card"><div><span class="avatar">K</span><strong>king</strong><small>#0001</small></div><span class="pill super">超级管理员</span><span class="status"><i></i>正常</span></article>
+        <article class="account-card"><div><span class="avatar teal">A</span><strong>amber</strong><small>#0002</small></div><span class="pill admin">管理员</span><span class="status"><i></i>正常</span><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></article>
+        <article class="account-card"><div><span class="avatar cream">M</span><strong>mori</strong><small>#0003</small></div><span class="pill">普通用户</span><span class="status"><i></i>正常</span><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></article>
+        <article class="account-card"><div><span class="avatar plum">Q</span><strong>qiao</strong><small>#0004</small></div><span class="pill">普通用户</span><span class="status"><i></i>正常</span><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></article>
+        <article class="account-card"><div><span class="avatar cream">L</span><strong>lumen</strong><small>#0005</small></div><span class="pill">普通用户</span><span class="status disabled"><i></i>已停用</span><div class="row-actions"><button class="mini-button restore">恢复</button><a class="mini-button" href="?page=password">修改密码</a></div></article>
+      </div>
+      <div class="table-wrap"><table class="dossier-table"><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        <tr><td class="id">#0001</td><td><span class="avatar">K</span><strong>king</strong></td><td><span class="pill super">超级管理员</span></td><td><span class="status"><i></i>正常</span></td><td><span class="locked">最高权限账号</span></td></tr>
+        <tr><td class="id">#0002</td><td><span class="avatar teal">A</span><strong>amber</strong></td><td><span class="pill admin">管理员</span></td><td><span class="status"><i></i>正常</span></td><td><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></td></tr>
+        <tr><td class="id">#0003</td><td><span class="avatar cream">M</span><strong>mori</strong></td><td><span class="pill">普通用户</span></td><td><span class="status"><i></i>正常</span></td><td><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></td></tr>
+        <tr><td class="id">#0004</td><td><span class="avatar plum">Q</span><strong>qiao</strong></td><td><span class="pill">普通用户</span></td><td><span class="status"><i></i>正常</span></td><td><div class="row-actions"><button class="mini-button danger">停用</button><a class="mini-button" href="?page=password">修改密码</a></div></td></tr>
+        <tr><td class="id">#0005</td><td><span class="avatar cream">L</span><strong>lumen</strong></td><td><span class="pill">普通用户</span></td><td><span class="status disabled"><i></i>已停用</span></td><td><div class="row-actions"><button class="mini-button restore">恢复</button><a class="mini-button" href="?page=password">修改密码</a></div></td></tr>
+      </tbody></table></div>
+      <div class="paper-foot"><span>显示 1–5 / 共 5 个</span><button class="mini-button" disabled>加载更多 →</button></div>
+    </section>
+  </main>
+
+  <main id="soups" class="screen inner-screen">
+    <div class="page-heading"><a class="back-ticket" href="?page=home">← 返回后台</a><div><p class="eyebrow">02 / STORIES</p><h1>题目管理</h1></div><span class="heading-stamp">内容档案</span></div>
+    <section class="paper panel-soups">
+      <div class="paper-heading"><div><span class="section-number">02</span><h2>题目列表</h2><small>已显示 4 道题</small></div></div>
+      <div class="toolbar"><label class="search-field"><span>⌕</span><input aria-label="搜索题目或作者" placeholder="搜索题目或作者" /></label><label class="select-wrap"><select aria-label="题目状态"><option>全部状态</option><option>公开</option><option>已隐藏</option><option>作者已删除</option></select></label><button class="action-button ink">筛选 <span>→</span></button></div>
+      <div class="table-wrap"><table class="dossier-table soup-table"><thead><tr><th>题目</th><th>作者</th><th>分类</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        <tr class="expanded"><td><strong>最后一杯咖啡</strong><span class="inline-link">⌄ 收起汤面</span><p class="soup-excerpt">凌晨的咖啡馆里，桌上留下两杯咖啡。第二个人却从未进过店门。</p></td><td><strong>@mori</strong><small>用户</small></td><td><span class="pill">本格</span><small>难度 3/5 · 恐怖 1/5</small></td><td><span class="status"><i></i>公开</span></td><td><button class="mini-button danger">隐藏</button></td></tr>
+        <tr><td><strong>没有脚印的雪地</strong><span class="inline-link">⌄ 查看汤面</span></td><td><strong>@qiao</strong><small>用户</small></td><td><span class="pill">本格</span><small>难度 4/5 · 恐怖 2/5</small></td><td><span class="status"><i></i>公开</span></td><td><button class="mini-button danger">隐藏</button></td></tr>
+        <tr><td><strong>午夜电梯</strong><span class="inline-link">⌄ 查看汤面</span></td><td><strong>@amber</strong><small>管理员</small></td><td><span class="pill">变格</span><small>难度 2/5 · 恐怖 4/5</small></td><td><span class="status hidden"><i></i>已隐藏</span></td><td><button class="mini-button restore">恢复公开</button></td></tr>
+        <tr><td><strong>旧信箱</strong><span class="inline-link">⌄ 查看汤面</span></td><td><strong>@lumen</strong><small>用户</small></td><td><span class="pill">本格</span><small>难度 2/5 · 恐怖 0/5</small></td><td><span class="status disabled"><i></i>作者已删除</span></td><td><span class="locked">不可恢复</span></td></tr>
+      </tbody></table></div>
+      <div class="paper-foot"><span>已开局对局不受隐藏影响；作者删除的题目不可恢复。</span><button class="mini-button" disabled>加载更多 →</button></div>
+    </section>
+  </main>
+
+  <main id="logs" class="screen inner-screen">
+    <div class="page-heading"><a class="back-ticket" href="?page=home">← 返回后台</a><div><p class="eyebrow">03 / TRACES</p><h1>运行日志</h1></div><button class="action-button primary">刷新数据 ↻</button></div>
+    <div class="metrics-grid">
+      <article class="metric-ticket"><span class="metric-icon">◫</span><span class="metric-label">日志占用</span><strong>164.4 <small>KB</small></strong><div class="meter"><span style="width:0.8%"></span></div><small>容量上限 20 MB</small></article>
+      <article class="metric-ticket"><span class="metric-icon cyan">⌁</span><span class="metric-label">近期请求</span><strong>300 <small>次</small></strong><div class="metric-rule"></div><small>其中 WebSocket 连接 6 次</small></article>
+      <article class="metric-ticket"><span class="metric-icon red">!</span><span class="metric-label">近期错误</span><strong>12 <small>次</small></strong><div class="metric-rule"></div><small>最近 300 次请求中的 4xx / 5xx</small></article>
+    </div>
+    <div class="log-grid">
+      <section class="paper log-card"><div class="log-head"><span class="section-number">01</span><div><h2>接口耗时</h2><small>最近 300 次请求</small></div></div>
+        <div class="route-row"><div><strong>GET /api/rooms/:id</strong><small>82 次 · 错误 1 次</small></div><span class="route-bar"><i style="width:74%"></i></span><b>P95&nbsp; 24.8 ms</b></div>
+        <div class="route-row"><div><strong>GET /api/soups</strong><small>61 次 · 错误 0 次</small></div><span class="route-bar"><i style="width:28%"></i></span><b>P95&nbsp; 9.4 ms</b></div>
+        <div class="route-row"><div><strong>POST /api/ai/games/:id/actions</strong><small>18 次 · 错误 2 次</small></div><span class="route-bar"><i style="width:98%"></i></span><b>P95&nbsp; 612 ms</b></div>
+        <div class="route-row"><div><strong>GET /api/me</strong><small>39 次 · 错误 0 次</small></div><span class="route-bar"><i style="width:13%"></i></span><b>P95&nbsp; 4.2 ms</b></div>
+      </section>
+      <section class="paper log-card stages-card"><div class="log-head"><span class="section-number cyan-bg">02</span><div><h2>阶段耗时</h2><small>最近一条请求</small></div></div>
+        <div class="stage-route">GET /api/rooms/:id <span>200</span></div>
+        <div class="stage-row"><span>会话校验</span><div class="stage-track"><i style="width:17%"></i></div><b>1.08 ms</b></div>
+        <div class="stage-row"><span>数据库查询</span><div class="stage-track"><i style="width:67%"></i></div><b>4.21 ms</b></div>
+        <div class="stage-row"><span>总耗时</span><div class="stage-track"><i style="width:100%"></i></div><b>6.32 ms</b></div>
+        <p class="subtle-note">阶段可能重叠，耗时不能直接相加。</p>
+      </section>
+    </div>
+    <section class="paper recent-card"><div class="paper-heading"><div><span class="section-number">03</span><h2>最近请求</h2><small>最多 50 条</small></div></div>
+      <div class="table-wrap"><table class="dossier-table trace-table"><thead><tr><th>时间</th><th>接口</th><th>状态</th><th>总耗时</th><th>会话</th><th>数据库</th><th></th></tr></thead><tbody>
+        <tr><td>11-16 14:42:08</td><td>GET /api/rooms/:id</td><td><span class="status"><i></i>200</span></td><td>6.32 ms</td><td>1.08 ms</td><td>4.21 ms</td><td><a class="mini-button" href="?page=trace">查看链路</a></td></tr>
+        <tr><td>11-16 14:42:06</td><td>GET /api/soups</td><td><span class="status"><i></i>200</span></td><td>3.84 ms</td><td>0.00 ms</td><td>2.72 ms</td><td><a class="mini-button" href="?page=trace">查看链路</a></td></tr>
+      </tbody></table></div>
+    </section>
+    <section class="paper recent-card ai-card"><div class="paper-heading"><div><span class="section-number cyan-bg">04</span><h2>AI 判定尝试</h2><small>近 7 天 · 按模型与提示词版本统计</small></div></div>
+      <div class="table-wrap"><table class="dossier-table ai-table"><thead><tr><th>模型</th><th>提示词</th><th>尝试</th><th>成功</th><th>格式错误</th><th>其他失败</th><th>平均判定耗时</th><th>判定 P95</th></tr></thead><tbody>
+        <tr><td><strong>qwen-plus</strong></td><td><span class="pill admin">v2</span></td><td>42</td><td>40</td><td>1</td><td>1</td><td>521.60 ms</td><td>704.70 ms</td></tr>
+      </tbody></table></div><p class="subtle-note">判定耗时包含历史读取、模型请求和结果校验，不含最终落库。</p>
+    </section>
+  </main>
+
+  <div id="create-modal" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="create-title"><div class="modal-paper"><div class="modal-heading"><span class="modal-symbol">＋</span><div><p class="eyebrow">ACCOUNTS / NEW</p><h2 id="create-title">创建账号</h2></div><a href="?page=accounts" class="modal-close" aria-label="关闭">×</a></div><form class="modal-form"><label>用户名<input placeholder="输入用户名" autocomplete="off" /></label><label>初始密码<input placeholder="至少 8 位" type="password" autocomplete="off" /></label><label>角色<select><option>普通用户</option><option>管理员</option></select></label><div class="modal-actions"><a href="?page=accounts" class="action-button quiet">取消</a><button type="button" class="action-button primary">创建账号 <span>→</span></button></div></form></div></div>
+  <div id="password-modal" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="password-title"><div class="modal-paper"><div class="modal-heading"><span class="modal-symbol key">✳</span><div><p class="eyebrow">ACCOUNTS / SECURITY</p><h2 id="password-title">修改密码</h2></div><a href="?page=accounts" class="modal-close" aria-label="关闭">×</a></div><form class="modal-form"><div class="account-strip"><span class="avatar teal">A</span><span>账号 <strong>amber</strong></span><span class="pill admin">管理员</span></div><label>新密码<input placeholder="输入新密码" type="password" autocomplete="off" /></label><p class="form-note">修改后，该账号需要重新登录。</p><div class="modal-actions"><a href="?page=accounts" class="action-button quiet">取消</a><button type="button" class="action-button primary">保存密码 <span>→</span></button></div></form></div></div>
+  <div id="trace-modal" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="trace-title"><div class="modal-paper trace-paper"><div class="modal-heading"><span class="modal-symbol cyan">⌁</span><div><p class="eyebrow">TRACE / REQUEST</p><h2 id="trace-title">链路详情</h2></div><a href="?page=logs" class="modal-close" aria-label="关闭">×</a></div><div class="trace-content"><div class="trace-route"><strong>GET /api/rooms/:id</strong><span class="status"><i></i>200</span></div><p class="trace-id">Trace ID&nbsp; 3bdef0f3e54577c3383b4d1cb2fabf84</p><div class="trace-total"><span>总耗时</span><strong>6.32 <small>ms</small></strong></div><div class="trace-timeline"><div><i class="line-dot"></i><span>auth.session</span><em>1.08 ms</em><b style="width:17%"></b></div><div><i class="line-dot"></i><span>db.query 01</span><em>0.82 ms</em><b style="width:13%"></b></div><div><i class="line-dot"></i><span>db.query 02</span><em>2.67 ms</em><b style="width:42%"></b></div><div><i class="line-dot"></i><span>db.query 03</span><em>0.72 ms</em><b style="width:11%"></b></div></div><p class="subtle-note">阶段可能重叠，耗时不能直接相加。</p></div></div></div>
+  <div id="ai-trace-modal" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="ai-trace-title"><div class="modal-paper trace-paper"><div class="modal-heading"><span class="modal-symbol cyan">⌁</span><div><p class="eyebrow">TRACE / AI REQUEST</p><h2 id="ai-trace-title">链路详情</h2></div><a href="?page=logs" class="modal-close" aria-label="关闭">×</a></div><div class="trace-content"><div class="trace-route"><strong>POST /api/ai/games/:id/actions</strong><span class="status"><i></i>200</span></div><p class="trace-id">Trace ID&nbsp; 8d452f864a0b43d1ac657f48e20a4a6b</p><div class="trace-total"><span>总耗时</span><strong>542.40 <small>ms</small></strong></div><div class="trace-timeline ai-timeline"><div><i class="line-dot"></i><span>auth.session</span><em>1.10 ms</em><b style="width:2%"></b></div><div><i class="line-dot"></i><span>ai.history</span><em>8.60 ms</em><b style="width:7%"></b></div><div><i class="line-dot"></i><span>ai.model</span><em>516.00 ms</em><b style="width:96%"></b></div><div><i class="line-dot"></i><span>ai.validate</span><em>2.20 ms</em><b style="width:3%"></b></div><div><i class="line-dot"></i><span>ai.persist</span><em>5.80 ms</em><b style="width:5%"></b></div></div><p class="subtle-note">阶段可能重叠，耗时不能直接相加。</p></div></div></div>
+</body>
+</html>

@@ -15,7 +15,10 @@ internal/agent/     AI 主持与单人对局
 internal/admin/     账号管理接口
 internal/telemetry/ 请求追踪与结构化日志
 migrations/         PostgreSQL 建表 SQL
-web/src/components/ Vue 页面组件
+web/src/components/ 按首页、社区、房间、单人、后台等模块分目录
+web/src/styles/     当前页面样式与通用控件
+docs/项目规划.md     功能与界面规划
+docs/design/ui/    当前网页静态设计图
 compose.yaml        本地数据库
 ```
 
@@ -46,7 +49,7 @@ npm run dev
 
 单人模式需要在启动后端前设置 `DASHSCOPE_API_KEY`。可用 `QWEN_MODEL` 选择模型，或用 `QWEN_BASE_URL` 指定百炼华北2工作空间的兼容接口地址；未配置时其他功能仍可使用。
 
-已有本地数据库时，启动后端会自动补建业务表；首次启动数据库会创建账号表。用本地命令初始化或重设超级管理员 `king`：
+启动后端时会按版本执行建表与升级脚本。用本地命令初始化或重设超级管理员 `king`：
 
 ```powershell
 $env:SUPER_ADMIN_PASSWORD = "设置你的密码"

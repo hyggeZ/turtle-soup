@@ -1,0 +1,24 @@
+/* 全站只保留排版与无障碍基础，页面视觉由各模块负责。 */
+:root {
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  font-synthesis: none;
+  color: #392635;
+  background: #191724;
+  --ink: #392635;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; scroll-behavior: smooth; }
+body { min-width: 320px; min-height: 100vh; margin: 0; overflow-x: hidden; }
+button, input, textarea, select { font: inherit; }
+button, a { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible, summary:focus-visible,
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid #79c9ce;
+  outline-offset: 3px;
+}
+h1, h2, h3 { margin: 0; }
+p { line-height: 1.65; }
+.surface { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; }
+[role='alert'] { color: #b34c55; }

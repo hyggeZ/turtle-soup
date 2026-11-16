@@ -166,7 +166,7 @@ func TestSoupCursorAcrossInsertAndSameTime(t *testing.T) {
 	}
 
 	for _, input := range []string{
-		"before=2026-11-01T00%3A00%3A00Z", "beforeId=1", "before=&beforeId=", "page=", "before=bad&beforeId=1",
+		"before=2026-11-01T00%3A00%3A00Z", "beforeId=1", "before=&beforeId=", "page=", "page=1", "before=bad&beforeId=1",
 		"before=2026-11-01T00%3A00%3A00Z&beforeId=0", "before=2026-11-01T00%3A00%3A00Z&beforeId=1&page=2",
 	} {
 		response := httptest.NewRecorder()

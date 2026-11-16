@@ -1,0 +1,79 @@
+/* 所有模块共用的确认弹窗。 */
+.confirm-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(13, 10, 23, .78);
+  backdrop-filter: blur(6px);
+}
+
+.confirm-sheet {
+  position: relative;
+  width: min(100%, 490px);
+  padding: 32px 36px 30px;
+  color: #442b39;
+  background: linear-gradient(145deg, #fff2dc, #efd0ae);
+  border: 7px solid #f6e3c9;
+  outline: 2px solid #a94c58;
+  box-shadow: 11px 13px 0 #1b1727, inset 0 0 0 1px #d1a487;
+  clip-path: polygon(0 11px, 11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%);
+}
+
+.confirm-sheet::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border: 1px solid rgba(157, 82, 82, .22);
+  pointer-events: none;
+}
+
+.confirm-symbol {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 18px;
+  border: 2px solid #b45b60;
+  border-radius: 50%;
+  color: #ae4854;
+  font: 800 27px Georgia, serif;
+}
+
+.confirm-label {
+  margin: 0 0 6px;
+  color: #b14555;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.confirm-sheet h2 { margin: 0 0 14px; font-size: 27px; }
+.confirm-message { margin: 0; line-height: 1.75; color: #6c5150; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 30px; }
+.confirm-button {
+  min-height: 44px;
+  padding: 10px 24px;
+  border: 0;
+  color: #fff4e4;
+  background: linear-gradient(160deg, #ee8275, #bb4c5b);
+  box-shadow: 4px 5px 0 #4b293e, inset 0 0 0 2px #92384c;
+  clip-path: polygon(0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform .15s ease, filter .15s ease;
+}
+.confirm-button:hover { transform: translateY(-2px); filter: brightness(1.08); }
+.confirm-button:active { transform: translateY(1px); }
+.confirm-button:focus-visible { outline: 3px solid #65bec4; outline-offset: 3px; }
+.confirm-button--quiet { color: #583744; background: #fff1dd; box-shadow: 4px 5px 0 #4b293e, inset 0 0 0 2px #ad756d; }
+.confirm-button--danger { background: linear-gradient(160deg, #e27070, #96334b); }
+
+@media (max-width: 520px) {
+  .confirm-sheet { padding: 24px 22px; }
+  .confirm-sheet h2 { font-size: 23px; }
+  .confirm-actions { flex-direction: column-reverse; }
+  .confirm-button { width: 100%; }
+}

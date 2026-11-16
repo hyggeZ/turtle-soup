@@ -19,7 +19,7 @@ import (
 	"turtle-soup/migrations"
 )
 
-// 先筛选再分页，保证较早发布的匹配题目仍能被选到。
+// 先筛选再按游标翻页，保证较早发布的匹配题目仍能被选到。
 func TestSoupFiltersAcrossPages(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -54,9 +54,13 @@ func TestSoupFiltersAcrossPages(t *testing.T) {
 	}
 	router := gin.New()
 	forum.NewHandler(forum.NewStore(db), account.NewHandler(account.NewPGStore(db), false)).Register(router)
-	list := func(page int, genre string, difficulty, horror int) []forum.Soup {
+	list := func(last *forum.Soup, genre string, difficulty, horror int) []forum.Soup {
 		t.Helper()
-		query := url.Values{"author": {strconv.FormatInt(author, 10)}, "page": {strconv.Itoa(page)}}
+		query := url.Values{"author": {strconv.FormatInt(author, 10)}}
+		if last != nil {
+			query.Set("before", last.CreatedAt.Format(time.RFC3339Nano))
+			query.Set("beforeId", strconv.FormatInt(last.ID, 10))
+		}
 		if genre != "" {
 			query.Set("genre", genre)
 		}
@@ -77,8 +81,11 @@ func TestSoupFiltersAcrossPages(t *testing.T) {
 		}
 		return items
 	}
-	first := list(1, "本格", 2, 3)
-	second := list(2, "本格", 2, 3)
+	first := list(nil, "本格", 2, 3)
+	if len(first) != 20 {
+		t.Fatalf("筛选后首批数量错误：%d", len(first))
+	}
+	second := list(&first[len(first)-1], "本格", 2, 3)
 	if len(first) != 20 || len(second) != 5 {
 		t.Fatalf("筛选后分页错误：第一页=%d，第二页=%d", len(first), len(second))
 	}
@@ -89,10 +96,14 @@ func TestSoupFiltersAcrossPages(t *testing.T) {
 		}
 		seen[item.ID] = true
 	}
-	if len(list(1, "变格", 4, 0)) != 20 || len(list(2, "变格", 4, 0)) != 5 {
+	otherFirst := list(nil, "变格", 4, 0)
+	if len(otherFirst) != 20 {
+		t.Fatalf("恐怖程度 0 的首批数量错误：%d", len(otherFirst))
+	}
+	if len(list(&otherFirst[len(otherFirst)-1], "变格", 4, 0)) != 5 {
 		t.Fatal("恐怖程度 0 的筛选结果错误")
 	}
-	if len(list(1, "本格", -1, -1)) != 20 {
+	if len(list(nil, "本格", -1, -1)) != 20 {
 		t.Fatal("单独按类型筛选失败")
 	}
 	for _, input := range []string{"genre=其他", "difficulty=0", "difficulty=6", "horror=-1", "horror=6", "page=abc"} {

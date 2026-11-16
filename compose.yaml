@@ -9,7 +9,6 @@ services:
       - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./migrations/001_auth.sql:/docker-entrypoint-initdb.d/001_auth.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U turtle -d turtle"]
       interval: 3s

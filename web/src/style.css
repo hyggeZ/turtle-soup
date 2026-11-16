@@ -1,6 +1,5 @@
-@import './styles/base.css';
-@import './styles/game.css';
-@import './styles/admin.css';
-@import './styles/h4-community.css';
-@import './styles/h4-play.css';
-@import './styles/h4-admin.css';
+@import './styles/foundation.css';
+@import './styles/controls.css';
+@import './styles/play-ui.css';
+@import './styles/admin-ui.css';
+@import './styles/game-ui.css';
