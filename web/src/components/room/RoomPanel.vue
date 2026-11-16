@@ -2,6 +2,7 @@
 // 房间操作走 HTTP；WebSocket 只提示重新读取按身份过滤的房间快照。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../../api'
+import { needsRefresh, offlinePollDelay, reconnectDelay, snapshotRetryDelay } from './retryTiming'
 import RoomEvents from './RoomEvents.vue'
 import RoomMembers from './RoomMembers.vue'
 import RoomSettings from './RoomSettings.vue'
@@ -28,7 +29,10 @@ let socket
 let reconnectTimer
 let refreshTimer
 let clockTimer
+let stableTimer
 let active = false
+let reconnectFailures = 0
+let loadFailures = 0
 let loadVersion = 0
 let eventCursor = 0
 let lastLoadedAt = 0
@@ -59,9 +63,11 @@ async function load() {
   const version = ++loadVersion
   const after = room.value?.id === id ? eventCursor : 0
   const sentAt = Date.now()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
   try {
     const path = `/api/rooms/${id}${after ? `?after=${after}` : ''}`
-    const next = await request(path)
+    const next = await request(path, { signal: controller.signal })
     if (!active || props.id !== id || version !== loadVersion) return
     if (!Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after) {
       throw new Error('房间事件数据无效，请重试')
@@ -80,18 +86,24 @@ async function load() {
     room.value = { ...next, events }
     eventCursor = next.eventCursor
     lastLoadedAt = performance.now()
+    loadFailures = 0
     error.value = ''
     if (next.status === 'closed') closeSocket()
-    else if (!socket) connect()
+    else if (!socket && !reconnectTimer) connect()
+    scheduleRefresh()
   } catch (cause) {
     if (!active || props.id !== id || version !== loadVersion) return
     lastLoadedAt = 0
-    error.value = cause.message
+    loadFailures += 1
+    error.value = cause.name === 'AbortError' ? '房间更新超时，请稍后重试' : cause.message
     if ([401, 403, 404].includes(cause.status)) {
       room.value = null
       eventCursor = 0
       closeSocket()
     }
+    scheduleRefresh()
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -209,20 +221,66 @@ function closeSocket() {
   socket = null
   connected.value = false
   clearTimeout(reconnectTimer)
+  reconnectTimer = null
+  clearTimeout(stableTimer)
+  clearTimeout(refreshTimer)
+  reconnectFailures = 0
   old?.close()
 }
 
+function scheduleRefresh() {
+  clearTimeout(refreshTimer)
+  if (!active || room.value?.status === 'closed') return
+  const wait = !connected.value ? offlinePollDelay() : loadFailures ? snapshotRetryDelay(loadFailures) : 60000
+  refreshTimer = setTimeout(async () => {
+    refreshTimer = null
+    if (!active || room.value?.status === 'closed') return
+    if (needsRefresh(connected.value, loadFailures, lastLoadedAt, performance.now())) await load()
+    else scheduleRefresh()
+  }, wait)
+}
+
+function scheduleReconnect() {
+  reconnectFailures += 1
+  const wait = reconnectDelay(reconnectFailures)
+  clearTimeout(reconnectTimer)
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    connect()
+  }, wait)
+  scheduleRefresh()
+}
+
 function connect() {
-  if (!active || !props.id) return
+  if (!active || !props.id || socket || reconnectTimer || room.value?.status === 'closed') return
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const connection = new WebSocket(`${protocol}//${window.location.host}/api/rooms/${props.id}/ws`)
+  let connection
+  try {
+    connection = new WebSocket(`${protocol}//${window.location.host}/api/rooms/${props.id}/ws`)
+  } catch {
+    scheduleReconnect()
+    return
+  }
   socket = connection
-  connection.onopen = () => { connected.value = true; everConnected.value = true; load() }
-  connection.onmessage = load
+  connection.onopen = () => {
+    if (!active || socket !== connection) return
+    connected.value = true
+    everConnected.value = true
+    // 短暂建立后又断开仍算连续失败；稳定 30 秒才重置退避。
+    stableTimer = setTimeout(() => { reconnectFailures = 0 }, 30000)
+    scheduleRefresh()
+    load()
+  }
+  connection.onmessage = () => {
+    // 快照服务连续失败时，通知只需等下一次退避补查即可。
+    if (loadFailures === 0) load()
+  }
   connection.onclose = () => {
     if (!active || socket !== connection) return
+    socket = null
     connected.value = false
-    reconnectTimer = setTimeout(connect, 2000)
+    clearTimeout(stableTimer)
+    scheduleReconnect()
   }
 }
 
@@ -231,6 +289,7 @@ function resetRoom() {
   room.value = null
   eventCursor = 0
   lastLoadedAt = 0
+  loadFailures = 0
   clockOffset.value = 0
   everConnected.value = false
   error.value = ''
@@ -245,11 +304,6 @@ function resetRoom() {
 onMounted(() => {
   active = true
   resetRoom()
-  // 实时连接断开时每 10 秒补查；连接正常时每 60 秒校准一次。
-  refreshTimer = setInterval(() => {
-    if (room.value?.status === 'closed') return
-    if (!connected.value || performance.now() - lastLoadedAt >= 60000) load()
-  }, 10000)
   clockTimer = setInterval(() => {
     now.value = Date.now()
     if (room.value?.status !== 'active' || room.value?.mode !== 'competitive' || !room.value.turnDeadline) return
@@ -262,7 +316,6 @@ onUnmounted(() => {
   active = false
   emit('hosting', false)
   closeSocket()
-  clearInterval(refreshTimer)
   clearInterval(clockTimer)
 })
 watch(() => [props.id, props.user?.id], resetRoom)
