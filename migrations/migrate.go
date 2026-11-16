@@ -53,6 +53,9 @@ var commentPublishLimitSQL string
 //go:embed 015_waiting_room_moderation.sql
 var waitingRoomModerationSQL string
 
+//go:embed 016_room_answer_parent_index.sql
+var roomAnswerParentIndexSQL string
+
 // Apply 只执行尚未应用的脚本；锁避免多进程同时改表。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	tx, err := db.Begin(ctx)
@@ -70,7 +73,7 @@ func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL, aiGlobalUsageSQL, userProfileSQL, roomLifecycleSQL, commentCursorSQL, soupModerationSQL, commentPublishLimitSQL, waitingRoomModerationSQL}
+	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL, aiGlobalUsageSQL, userProfileSQL, roomLifecycleSQL, commentCursorSQL, soupModerationSQL, commentPublishLimitSQL, waitingRoomModerationSQL, roomAnswerParentIndexSQL}
 	for i, script := range scripts {
 		version := i + 1
 		var applied bool

@@ -45,14 +45,15 @@ func TestApplyFromEmptySchema(t *testing.T) {
 			t.Fatalf("第 %d 次初始化失败: %v", i+1, err)
 		}
 	}
-	var users, rooms, games, waitingIndex string
-	err = db.QueryRow(ctx, `SELECT to_regclass('users'),to_regclass('rooms'),to_regclass('ai_games'),to_regclass('rooms_soup_waiting_idx')`).
-		Scan(&users, &rooms, &games, &waitingIndex)
-	if err != nil || users == "" || rooms == "" || games == "" || waitingIndex == "" {
-		t.Fatalf("核心表或等待房索引不完整: users=%q rooms=%q ai_games=%q index=%q err=%v", users, rooms, games, waitingIndex, err)
+	var users, rooms, games, waitingIndex, answerIndex string
+	err = db.QueryRow(ctx, `SELECT to_regclass('users'),to_regclass('rooms'),to_regclass('ai_games'),
+		to_regclass('rooms_soup_waiting_idx'),to_regclass('room_events_answer_parent_idx')`).
+		Scan(&users, &rooms, &games, &waitingIndex, &answerIndex)
+	if err != nil || users == "" || rooms == "" || games == "" || waitingIndex == "" || answerIndex == "" {
+		t.Fatalf("核心表或索引不完整: users=%q rooms=%q ai_games=%q waiting=%q answer=%q err=%v", users, rooms, games, waitingIndex, answerIndex, err)
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 15 {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 16 {
 		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
 	}
 }
@@ -90,15 +91,39 @@ func TestApplyFromVersionEight(t *testing.T) {
 			t.Fatalf("旧版迁移 %d 失败：%v", i+1, err)
 		}
 	}
+	var host, player int64
 	for i, calls := range []int{17, 23} {
 		var user int64
 		name := schema + "_" + strconv.Itoa(i)
 		if err := db.QueryRow(ctx, `INSERT INTO users(username,password_hash) VALUES($1,'test') RETURNING id`, name).Scan(&user); err != nil {
 			t.Fatal(err)
 		}
+		if i == 0 {
+			host = user
+		} else {
+			player = user
+		}
 		if _, err := db.Exec(ctx, `INSERT INTO ai_daily_usage(user_id,usage_day,calls) VALUES($1,CURRENT_DATE,$2)`, user, calls); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// 旧库中已有问答时，新增索引不能改变事件或阻断升级。
+	var soup, room, question int64
+	if err := db.QueryRow(ctx, `INSERT INTO soups(author_id,title,surface,answer,genre,difficulty,horror)
+		VALUES($1,'旧房间题','汤面','汤底','本格',2,0) RETURNING id`, host).Scan(&soup); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `INSERT INTO rooms(code,owner_id,host_id,soup_id,mode,max_players,public)
+		VALUES('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',$1,$1,$2,'casual',4,TRUE) RETURNING id`, host, soup).Scan(&room); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `INSERT INTO room_events(room_id,user_id,kind,body)
+		VALUES($1,$2,'question','原有问题') RETURNING id`, room, player).Scan(&question); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO room_events(room_id,user_id,kind,result,parent_id)
+		VALUES($1,$2,'answer','是',$3)`, room, host, question); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := db.Exec(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`); err != nil {
 		t.Fatal(err)
@@ -112,9 +137,14 @@ func TestApplyFromVersionEight(t *testing.T) {
 		}
 	}
 	var count int
-	var table string
-	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage') FROM schema_migrations`).Scan(&count, &table); err != nil || count != 15 || table == "" {
-		t.Fatalf("升级结果错误：版本数=%d，新表=%q，错误=%v", count, table, err)
+	var table, answerIndex string
+	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage'),
+		to_regclass('room_events_answer_parent_idx') FROM schema_migrations`).Scan(&count, &table, &answerIndex); err != nil || count != 16 || table == "" || answerIndex == "" {
+		t.Fatalf("升级结果错误：版本数=%d，新表=%q，回答索引=%q，错误=%v", count, table, answerIndex, err)
+	}
+	var events int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM room_events WHERE room_id=$1`, room).Scan(&events); err != nil || events != 2 {
+		t.Fatalf("升级后旧房间问答不完整：events=%d err=%v", events, err)
 	}
 	var calls int
 	if err := db.QueryRow(ctx, `SELECT calls FROM ai_global_usage WHERE usage_day=CURRENT_DATE`).Scan(&calls); err != nil || calls != 40 {
