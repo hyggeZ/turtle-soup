@@ -78,8 +78,10 @@ func main() {
 	}
 	auth := account.NewHandler(account.NewPGStore(db), os.Getenv("COOKIE_SECURE") == "true")
 	auth.Register(router)
-	forum.NewHandler(forum.NewStore(db), auth).Register(router)
 	rooms := room.NewHandler(db, auth)
+	forumHandler := forum.NewHandler(forum.NewStore(db), auth)
+	forumHandler.SetRoomNotifier(rooms.NotifyRoom)
+	forumHandler.Register(router)
 	admins := admin.NewHandler(db, auth, monitor)
 	admins.SetRoomNotifier(rooms.NotifyRoom)
 	admins.Register(router)

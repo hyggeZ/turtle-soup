@@ -204,8 +204,9 @@ func (h *Handler) list(c *gin.Context) {
 	rows, e := h.db.Query(c.Request.Context(), `SELECT r.id,r.code,r.mode,r.max_players,r.status,
 		r.soup_title,r.soup_genre,r.soup_difficulty,r.soup_horror,
 		(SELECT count(*) FROM room_members m WHERE m.room_id=r.id AND m.role='player')
-		FROM rooms r
-		WHERE r.public=TRUE AND r.status IN ('waiting','active') AND ($1=0 OR r.id<$1)
+		FROM rooms r JOIN soups s ON s.id=r.soup_id
+		WHERE r.public=TRUE AND r.status IN ('waiting','active')
+		AND s.deleted_at IS NULL AND s.hidden_at IS NULL AND ($1=0 OR r.id<$1)
 		ORDER BY r.id DESC LIMIT 50`, before)
 	if e != nil {
 		fail(c, e)
@@ -328,7 +329,8 @@ func (h *Handler) join(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	if finishedReplay && !visible {
+	// 已有成员可重连进行中的快照；下架后不再接纳新成员。
+	if !visible {
 		c.JSON(http.StatusNotFound, gin.H{"error": "房间不存在"})
 		return
 	}

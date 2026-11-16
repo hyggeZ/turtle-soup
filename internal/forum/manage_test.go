@@ -216,8 +216,13 @@ func TestSoupAuthorManageAndGameSnapshots(t *testing.T) {
 	if _, err := agent.NewStore(db).Create(ctx, users[1], soupID); !errors.Is(err, agent.ErrNotFound) {
 		t.Fatalf("删除后仍能开单人局：%v", err)
 	}
-	if res := call(http.MethodPost, "/api/rooms/join", map[string]any{"code": firstRoomCode}, cookies[1]); res.Code != http.StatusOK {
-		t.Fatalf("软删除影响旧房间入场：%d %s", res.Code, res.Body.String())
+	var waitingStatus string
+	var closedAt *time.Time
+	if err := db.QueryRow(ctx, `SELECT status,closed_at FROM rooms WHERE id=$1`, roomID).Scan(&waitingStatus, &closedAt); err != nil || waitingStatus != "closed" || closedAt == nil {
+		t.Fatalf("删除后等待房未关闭：%q %v %v", waitingStatus, closedAt, err)
+	}
+	if res := call(http.MethodPost, "/api/rooms/join", map[string]any{"code": firstRoomCode}, cookies[1]); res.Code != http.StatusConflict {
+		t.Fatalf("删除后仍可进入等待房：%d %s", res.Code, res.Body.String())
 	}
 	roomView := call(http.MethodGet, fmt.Sprintf("/api/rooms/%d", roomID), nil, cookies[0])
 	if roomView.Code != http.StatusOK || !strings.Contains(roomView.Body.String(), newAnswer) || !strings.Contains(roomView.Body.String(), "修改后的题目") {

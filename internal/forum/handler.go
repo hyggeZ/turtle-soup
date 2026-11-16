@@ -15,13 +15,17 @@ import (
 )
 
 type Handler struct {
-	store *Store
-	auth  *account.Handler
+	store      *Store
+	auth       *account.Handler
+	notifyRoom func(int64)
 }
 
 func NewHandler(store *Store, auth *account.Handler) *Handler {
 	return &Handler{store: store, auth: auth}
 }
+
+// SetRoomNotifier 在删除提交后通知被关闭的房间刷新状态。
+func (h *Handler) SetRoomNotifier(notify func(int64)) { h.notifyRoom = notify }
 
 // Register 集中注册汤题与用户互动接口。
 func (h *Handler) Register(router *gin.Engine) {
@@ -95,6 +99,10 @@ func replyError(ctx *gin.Context, err error) {
 	}
 	if errors.Is(err, ErrActiveGame) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	if errors.Is(err, ErrRoomBusy) {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
 	}
 	if errors.Is(err, ErrModerated) {
@@ -249,9 +257,15 @@ func (h *Handler) delete(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.store.Delete(ctx.Request.Context(), user, id); err != nil {
+	closed, err := h.store.Delete(ctx.Request.Context(), user, id)
+	if err != nil {
 		replyError(ctx, err)
 		return
+	}
+	for _, roomID := range closed {
+		if h.notifyRoom != nil {
+			h.notifyRoom(roomID)
+		}
 	}
 	ctx.Status(http.StatusNoContent)
 }

@@ -68,6 +68,16 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		if status != "waiting" || host == 0 || (user != owner && user != host) {
 			return bad()
 		}
+		// 房间已锁定，再核对题目，阻止修复前遗留的下架等待房开局。
+		var visibleID int64
+		err := tx.QueryRow(ctx, `SELECT id FROM soups
+			WHERE id=$1 AND deleted_at IS NULL AND hidden_at IS NULL FOR UPDATE`, soupID).Scan(&visibleID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", errors.New("题目已下架，不能开局")
+		}
+		if err != nil {
+			return "", err
+		}
 		var first int64
 		if tx.QueryRow(ctx, `SELECT user_id FROM room_members WHERE room_id=$1 AND role='player' ORDER BY joined_at,user_id LIMIT 1`, id).Scan(&first) != nil {
 			return "", errors.New("至少需要一名玩家")
@@ -76,7 +86,7 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 			_, err := tx.Exec(ctx, `UPDATE rooms SET status='active',turn_user_id=$2,turn_deadline=NOW()+INTERVAL '60 seconds' WHERE id=$1`, id, first)
 			return "对局开始", err
 		}
-		_, err := tx.Exec(ctx, `UPDATE rooms SET status='active' WHERE id=$1`, id)
+		_, err = tx.Exec(ctx, `UPDATE rooms SET status='active' WHERE id=$1`, id)
 		return "对局开始", err
 	case "question":
 		if status != "active" || role != "player" || len([]rune(in.Body)) < 1 || len([]rune(in.Body)) > 500 {

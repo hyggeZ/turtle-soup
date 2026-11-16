@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,6 +17,9 @@ var ErrPlaying = errors.New("正在参与该题对局")
 var ErrForbidden = errors.New("只有题目作者可以管理该题")
 var ErrActiveGame = errors.New("这道题仍有进行中的对局，暂时不能编辑")
 var ErrModerated = errors.New("题目已被管理员隐藏，暂时不能编辑")
+var ErrRoomBusy = errors.New("房间设置繁忙，请稍后重试删除")
+
+var errRetryDelete = errors.New("重试删除题目")
 
 type Soup struct {
 	ID         int64     `json:"id"`
@@ -228,29 +232,120 @@ func (s *Store) Update(ctx context.Context, user, id int64, title, surface, answ
 	return item, tx.Commit(ctx)
 }
 
-// Delete 只标记作者删除；即使已被管理员隐藏，作者仍可最终删除自己的题目。
-// 已创建的真人房间和 AI 单人局继续使用各自的题目快照。
-func (s *Store) Delete(ctx context.Context, user, id int64) error {
+// Delete 下架题目并关闭等待房；已开局房间和 AI 单人局继续使用各自的快照。
+func (s *Store) Delete(ctx context.Context, user, id int64) ([]int64, error) {
+	for attempt := 0; attempt < 16; attempt++ {
+		closed, err := s.deleteOnce(ctx, user, id)
+		if !errors.Is(err, errRetryDelete) {
+			return closed, err
+		}
+		if attempt == 15 {
+			return nil, ErrRoomBusy
+		}
+		// 先回滚释放题目锁，再让持有新房间锁的设置请求完成。
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 5 * time.Millisecond):
+		}
+	}
+	return nil, ErrRoomBusy
+}
+
+func (s *Store) deleteOnce(ctx context.Context, user, id int64) ([]int64, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
+	// 先只读核对权限，避免无权请求锁住其他人的等待房间。
 	var author int64
+	var available bool
+	err = tx.QueryRow(ctx, `SELECT author_id,deleted_at IS NULL FROM soups WHERE id=$1`, id).Scan(&author, &available)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !available {
+		return nil, ErrNotFound
+	}
+	if author != user {
+		return nil, ErrForbidden
+	}
+	// 房间设置与入场先锁房间再锁题目；删除沿用相同顺序。
+	if err := lockWaitingRooms(ctx, tx, id, false); err != nil {
+		return nil, err
+	}
+	// 等待房间锁期间题目可能已被其他请求删除，锁题目后再核对一次。
 	err = tx.QueryRow(ctx, `SELECT author_id FROM soups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&author)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, err
+	}
+	if author != user {
+		return nil, ErrForbidden
+	}
+	// 首轮扫描后可能又建成新房；持有题目锁时不得等待该房的设置事务。
+	// NOWAIT 失败则整笔回滚重试；成功后所有等待房都已锁定。
+	if err := lockWaitingRooms(ctx, tx, id, true); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
+			return nil, errRetryDelete
+		}
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE soups SET deleted_at=NOW(),updated_at=NOW() WHERE id=$1`, id); err != nil {
+		return nil, err
+	}
+	// 建房和换入题目都要先锁题目，此时不会再出现新的等待房。
+	closed := make([]int64, 0)
+	rows, err := tx.Query(ctx, `UPDATE rooms SET status='closed',closed_at=NOW()
+		WHERE soup_id=$1 AND status='waiting' RETURNING id`, id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var roomID int64
+		if err := rows.Scan(&roomID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		closed = append(closed, roomID)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return closed, nil
+}
+
+func lockWaitingRooms(ctx context.Context, tx pgx.Tx, soupID int64, nowait bool) error {
+	query := `SELECT id FROM rooms WHERE soup_id=$1 AND status='waiting' ORDER BY id FOR UPDATE`
+	if nowait {
+		query += ` NOWAIT`
+	}
+	rows, err := tx.Query(ctx, query, soupID)
 	if err != nil {
 		return err
 	}
-	if author != user {
-		return ErrForbidden
+	for rows.Next() {
+		var roomID int64
+		if err := rows.Scan(&roomID); err != nil {
+			rows.Close()
+			return err
+		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE soups SET deleted_at=NOW(),updated_at=NOW() WHERE id=$1`, id); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	err = rows.Err()
+	rows.Close()
+	return err
 }
 
 // RevealAnswer 与加入房间共用题目行锁，避免“看汤底”和“入场”并发穿过检查。

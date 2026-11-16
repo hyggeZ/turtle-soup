@@ -61,6 +61,7 @@ func newModerationTest(t *testing.T) *moderationTest {
 		t.Fatal(err)
 	}
 	config.ConnConfig.RuntimeParams["search_path"] = schema
+	config.MaxConns = 8
 	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal(err)
@@ -322,6 +323,148 @@ func TestHideSoupWhileCreatingRooms(t *testing.T) {
 		var waiting int
 		if err := s.db.QueryRow(context.Background(), `SELECT count(*) FROM rooms WHERE soup_id=$1 AND status='waiting'`, soupID).Scan(&waiting); err != nil || waiting != 0 {
 			t.Fatalf("隐藏后仍留有等待房：第 %d 次，数量 %d，错误 %v", index, waiting, err)
+		}
+	}
+}
+
+// 新房在首轮锁房后提交，换题又锁住新房时，隐藏必须释放题目锁再重试。
+func TestHideSoupRetriesRoomCreatedDuringLockScan(t *testing.T) {
+	s := newModerationTest(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	target := s.soup("user", "锁序竞态题", "锁序竞态汤底")
+	first := s.room(target, "waiting")
+	gateKey := time.Now().UnixNano()
+	_, err := s.db.Exec(ctx, fmt.Sprintf(`CREATE FUNCTION moderation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF OLD.hidden_at IS NULL AND NEW.hidden_at IS NOT NULL THEN
+				PERFORM pg_advisory_lock(%d);
+				PERFORM pg_advisory_unlock(%d);
+			END IF;
+			RETURN NEW;
+		END $$`, gateKey, gateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(ctx, `CREATE TRIGGER moderation_gate BEFORE UPDATE ON soups
+		FOR EACH ROW EXECUTE FUNCTION moderation_gate()`); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := s.db.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Release()
+	if _, err := gate.Exec(ctx, `SELECT pg_advisory_lock($1)`, gateKey); err != nil {
+		t.Fatal(err)
+	}
+	gateLocked := true
+	defer func() {
+		if gateLocked {
+			_, _ = gate.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, gateKey)
+		}
+	}()
+
+	creator, err := s.db.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer creator.Release()
+	createTx, err := creator.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer createTx.Rollback(context.Background())
+	if _, err := createTx.Exec(ctx, `SELECT id FROM soups WHERE id=$1 FOR UPDATE`, target); err != nil {
+		t.Fatal(err)
+	}
+	var creatorPID int32
+	if err := creator.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&creatorPID); err != nil {
+		t.Fatal(err)
+	}
+	hideDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		hideDone <- s.call(http.MethodPatch, fmt.Sprintf("/api/admin/soups/%d", target), "admin", map[string]bool{"hidden": true})
+	}()
+	// 后台已完成首轮等待房扫描，正等创建事务释放题目行。
+	if _, err := waitForBlockedBackend(ctx, s.db, creatorPID); err != nil {
+		t.Fatal(err)
+	}
+	var second int64
+	err = createTx.QueryRow(ctx, `INSERT INTO rooms(code,owner_id,host_id,soup_id,mode,max_players,public,status)
+		VALUES($1,$2,$2,$3,'casual',6,TRUE,'waiting') RETURNING id`,
+		fmt.Sprintf("%032x", gateKey), s.users["user"], target).Scan(&second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createTx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var gatePID int32
+	if err := gate.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&gatePID); err != nil {
+		t.Fatal(err)
+	}
+	// 隐藏操作已持有题目行，停在测试触发器中。
+	hidePID, err := waitForBlockedBackend(ctx, s.db, gatePID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		settingsDone <- s.call(http.MethodPatch, fmt.Sprintf("/api/rooms/%d/settings", second), "user", map[string]any{
+			"soupId": target, "mode": "casual", "maxPlayers": 6, "public": true,
+		})
+	}()
+	// 换题请求先锁新房，再被隐藏操作的题目锁挡住。
+	if _, err := waitForBlockedBackend(ctx, s.db, hidePID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gate.Exec(ctx, `SELECT pg_advisory_unlock($1)`, gateKey); err != nil {
+		t.Fatal(err)
+	}
+	gateLocked = false
+	select {
+	case res := <-settingsDone:
+		if res.Code != http.StatusNoContent {
+			t.Fatalf("换题请求未在隐藏重试后完成：%d %s", res.Code, res.Body.String())
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case res := <-hideDone:
+		if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"closedRooms":2`) {
+			t.Fatalf("隐藏未关闭两间等待房：%d %s", res.Code, res.Body.String())
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	var remaining int
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM rooms WHERE soup_id=$1 AND status='waiting'`, target).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("隐藏后仍有等待房：%d %v", remaining, err)
+	}
+	if len(s.closed) != 2 || s.closed[0] != first && s.closed[1] != first || s.closed[0] != second && s.closed[1] != second {
+		t.Fatalf("关闭通知不完整：%v", s.closed)
+	}
+}
+
+func waitForBlockedBackend(ctx context.Context, db *pgxpool.Pool, blocker int32) (int32, error) {
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		var pid int32
+		err := db.QueryRow(ctx, `SELECT COALESCE((SELECT pid FROM pg_stat_activity
+			WHERE $1=ANY(pg_blocking_pids(pid)) LIMIT 1),0)`, blocker).Scan(&pid)
+		if err != nil {
+			return 0, err
+		}
+		if pid != 0 {
+			return pid, nil
+		}
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-tick.C:
 		}
 	}
 }

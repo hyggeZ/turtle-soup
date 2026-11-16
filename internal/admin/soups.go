@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // 后台列表只返回汤面和审核状态，任何角色都不能从这里读取汤底。
@@ -116,10 +117,53 @@ func (h *Handler) moderateSoup(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
+	for attempt := 0; attempt < 16; attempt++ {
+		closed, status, err := h.moderateSoupOnce(ctx, operator.Role, operator.ID, id, *input.Hidden)
+		if status == http.StatusNotFound {
+			c.JSON(status, gin.H{"error": "题目不存在"})
+			return
+		}
+		if status == http.StatusConflict {
+			c.JSON(status, gin.H{"error": "作者已删除该题，后台不能恢复"})
+			return
+		}
+		if err == nil {
+			for _, roomID := range closed {
+				if h.notifyRoom != nil {
+					h.notifyRoom(roomID)
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"id": id, "hidden": *input.Hidden, "closedRooms": len(closed)})
+			return
+		}
+		var pgErr *pgconn.PgError
+		if !*input.Hidden || !errors.As(err, &pgErr) || pgErr.Code != "55P03" {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+			return
+		}
+		if attempt == 15 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "房间状态繁忙，请稍后重试"})
+			return
+		}
+		// 新房间可能被换题请求锁住；先释放题目锁，再短暂等待重试。
+		delay := time.Duration(attempt+1) * 10 * time.Millisecond
+		if delay > 100*time.Millisecond {
+			delay = 100 * time.Millisecond
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, operatorID, id int64, hidden bool) ([]int64, int, error) {
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-		return
+		return nil, 0, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -128,88 +172,81 @@ func (h *Handler) moderateSoup(c *gin.Context) {
 	var deleted *time.Time
 	err = tx.QueryRow(ctx, `SELECT u.role,s.deleted_at FROM soups s
 		JOIN users u ON u.id=s.author_id WHERE s.id=$1`, id).Scan(&role, &deleted)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && !canModerate(operator.Role, role) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "题目不存在"})
-		return
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && !canModerate(operatorRole, role) {
+		return nil, http.StatusNotFound, nil
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-		return
+		return nil, 0, err
 	}
 	if deleted != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "作者已删除该题，后台不能恢复"})
-		return
+		return nil, http.StatusConflict, nil
 	}
-	if *input.Hidden {
+	if hidden {
 		// 房间设置先锁房间再锁题目；这里沿用同一顺序避免互相等待。
-		if err := lockWaitingRooms(ctx, tx, id); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-			return
+		if err := lockWaitingRooms(ctx, tx, id, false); err != nil {
+			return nil, 0, err
 		}
 	}
 	// 建房与单人开局都会锁题目行，隐藏操作在此与它们串行化。
 	err = tx.QueryRow(ctx, `SELECT u.role,s.deleted_at FROM soups s
 		JOIN users u ON u.id=s.author_id WHERE s.id=$1 FOR UPDATE OF s`, id).
 		Scan(&role, &deleted)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-		return
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, http.StatusNotFound, nil
 	}
-	if !canModerate(operator.Role, role) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "题目不存在"})
-		return
+	if err != nil {
+		return nil, 0, err
+	}
+	if !canModerate(operatorRole, role) {
+		return nil, http.StatusNotFound, nil
 	}
 	if deleted != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "作者已删除该题，后台不能恢复"})
-		return
+		return nil, http.StatusConflict, nil
 	}
 	_, err = tx.Exec(ctx, `UPDATE soups SET
 		hidden_at=CASE WHEN $2 THEN COALESCE(hidden_at,NOW()) ELSE NULL END,
 		hidden_by=CASE WHEN $2 THEN COALESCE(hidden_by,$3) ELSE NULL END,
-		updated_at=NOW() WHERE id=$1`, id, *input.Hidden, operator.ID)
+		updated_at=NOW() WHERE id=$1`, id, hidden, operatorID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-		return
+		return nil, 0, err
 	}
 	closed := make([]int64, 0)
-	if *input.Hidden {
+	if hidden {
+		// 首轮锁房后可能刚建出新房；此时持有题目锁，不能等待锁住新房的换题请求。
+		if err := lockWaitingRooms(ctx, tx, id, true); err != nil {
+			return nil, 0, err
+		}
 		rows, err := tx.Query(ctx, `UPDATE rooms SET status='closed',closed_at=NOW()
 			WHERE soup_id=$1 AND status='waiting' RETURNING id`, id)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-			return
+			return nil, 0, err
 		}
 		for rows.Next() {
 			var roomID int64
 			if err := rows.Scan(&roomID); err != nil {
 				rows.Close()
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-				return
+				return nil, 0, err
 			}
 			closed = append(closed, roomID)
 		}
 		err = rows.Err()
 		rows.Close()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-			return
+			return nil, 0, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
-		return
+		return nil, 0, err
 	}
-	for _, roomID := range closed {
-		if h.notifyRoom != nil {
-			h.notifyRoom(roomID)
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "hidden": *input.Hidden, "closedRooms": len(closed)})
+	return closed, 0, nil
 }
 
-func lockWaitingRooms(ctx context.Context, tx pgx.Tx, soupID int64) error {
-	rows, err := tx.Query(ctx, `SELECT id FROM rooms
-		WHERE soup_id=$1 AND status='waiting' ORDER BY id FOR UPDATE`, soupID)
+func lockWaitingRooms(ctx context.Context, tx pgx.Tx, soupID int64, nowait bool) error {
+	query := `SELECT id FROM rooms WHERE soup_id=$1 AND status='waiting' ORDER BY id FOR UPDATE`
+	if nowait {
+		query += ` NOWAIT`
+	}
+	rows, err := tx.Query(ctx, query, soupID)
 	if err != nil {
 		return err
 	}
