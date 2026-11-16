@@ -2,6 +2,7 @@
 package account
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -48,11 +49,16 @@ func (h *Handler) Register(router *gin.Engine) {
 // CurrentUser 读取请求中的会话，供其他业务模块判断登录状态。
 func (h *Handler) CurrentUser(ctx *gin.Context) (User, error) {
 	defer telemetry.Begin(ctx.Request.Context(), "auth.session")()
-	hash, err := tokenHash(ctx.Request)
+	return h.SessionUser(ctx.Request.Context(), ctx.Request)
+}
+
+// SessionUser 供长连接在握手后重新核验 Cookie；不会向已升级的连接写 HTTP 响应。
+func (h *Handler) SessionUser(ctx context.Context, request *http.Request) (User, error) {
+	hash, err := tokenHash(request)
 	if err != nil {
 		return User{}, ErrNotFound
 	}
-	user, err := h.store.FindSessionUser(ctx.Request.Context(), hash)
+	user, err := h.store.FindSessionUser(ctx, hash)
 	if err == nil && user.Disabled {
 		return User{}, ErrNotFound
 	}

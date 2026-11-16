@@ -102,6 +102,13 @@ func RecoverActive(ctx context.Context, db *pgxpool.Pool) error {
 
 // WebSocket 连接仅在登录且属于房间后建立，默认执行同源校验。
 func (h *Handler) live(c *gin.Context) {
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+	h.liveWithTicks(c, ticker.C)
+}
+
+// 将心跳时钟传入连接循环，测试可立即触发心跳而不必等待 25 秒。
+func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 	user, ok := h.user(c)
 	if !ok {
 		return
@@ -144,9 +151,6 @@ func (h *Handler) live(c *gin.Context) {
 		}
 	}()
 	h.resumeIfHost(id, user.ID)
-	ticker := time.NewTicker(25 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-closed.Done():
@@ -158,10 +162,17 @@ func (h *Handler) live(c *gin.Context) {
 			if err != nil {
 				return
 			}
-		case <-ticker.C:
-			pingCtx, stop := context.WithTimeout(closed, 5*time.Second)
+		case <-ticks:
+			// 退出、改密或停用后的旧连接最多保留一个心跳周期；查询失败时也关闭连接。
+			checkCtx, checkCancel := context.WithTimeout(closed, 3*time.Second)
+			current, checkErr := h.auth.SessionUser(checkCtx, c.Request)
+			checkCancel()
+			if checkErr != nil || current.ID != user.ID {
+				return
+			}
+			pingCtx, pingCancel := context.WithTimeout(closed, 5*time.Second)
 			err = conn.Ping(pingCtx)
-			stop()
+			pingCancel()
 			if err != nil {
 				return
 			}
