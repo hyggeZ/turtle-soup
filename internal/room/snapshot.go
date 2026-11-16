@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
 // snapshot 只向成员展示其角色允许看到的事件内容。
@@ -27,6 +28,17 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
+	ctx := c.Request.Context()
+	begin := func() (pgx.Tx, error) {
+		return h.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	}
+	// 身份、成员和事件必须来自同一个数据库快照，避免主持交接后泄露新私有事件。
+	tx, e := begin()
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var code, mode, status, title, surface, genre, role, answer string
 	var owner, soupID int64
 	var host *int64
@@ -40,26 +52,37 @@ func (h *Handler) get(c *gin.Context) {
 		CASE WHEN m.role='host' OR m.seen_answer OR r.answer_published THEN COALESCE(r.soup_answer,'') ELSE '' END
 		FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.user_id=$2 WHERE r.id=$1`
 	read := func() error {
-		return h.db.QueryRow(c.Request.Context(), query, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &answer)
+		return tx.QueryRow(ctx, query, id, u.ID).Scan(&code, &mode, &status, &owner, &host, &soupID, &max, &public, &turn, &deadline, &winner, &title, &surface, &genre, &difficulty, &horror, &answerPublished, &role, &answer)
 	}
-	e := read()
+	e = read()
 	if e != nil {
 		fail(c, e)
 		return
 	}
 	if mode == "competitive" && status == "active" && deadline != nil && !time.Now().Before(*deadline) {
-		if e := h.advanceExpiredTurn(c.Request.Context(), id); e != nil {
+		// 到期推进使用独立写事务；随后重开只读事务才能看到推进后的状态。
+		if e := tx.Rollback(ctx); e != nil {
 			fail(c, e)
 			return
 		}
-		// 提交后重读，避免把上一回合的状态返回给触发刷新的人。
+		if e := h.advanceExpiredTurn(ctx, id); e != nil {
+			fail(c, e)
+			return
+		}
+		nextTx, e := begin()
+		if e != nil {
+			fail(c, e)
+			return
+		}
+		tx = nextTx
+		// 即使还有待答问题导致截止时间仍过期，本次请求也只尝试推进一次。
 		if e := read(); e != nil {
 			fail(c, e)
 			return
 		}
 	}
 	members := make([]gin.H, 0)
-	rows, e := h.db.Query(c.Request.Context(), `SELECT m.user_id,u.username,m.role,m.correct,m.host_request FROM room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=$1 ORDER BY m.joined_at,m.user_id`, id)
+	rows, e := tx.Query(ctx, `SELECT m.user_id,u.username,m.role,m.correct,m.host_request FROM room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=$1 ORDER BY m.joined_at,m.user_id`, id)
 	if e != nil {
 		fail(c, e)
 		return
@@ -97,7 +120,7 @@ func (h *Handler) get(c *gin.Context) {
 		eventArgs = append(eventArgs, after)
 	}
 	eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
-	ev, e := h.db.Query(c.Request.Context(), eventQuery, eventArgs...)
+	ev, e := tx.Query(ctx, eventQuery, eventArgs...)
 	if e != nil {
 		fail(c, e)
 		return
@@ -138,5 +161,9 @@ func (h *Handler) get(c *gin.Context) {
 		return
 	}
 	ev.Close()
+	if e := tx.Commit(ctx); e != nil {
+		fail(c, e)
+		return
+	}
 	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor})
 }
