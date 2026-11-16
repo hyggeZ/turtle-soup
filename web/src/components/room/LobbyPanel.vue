@@ -1,5 +1,5 @@
 <script setup>
-// 大厅展示公开房间和我已加入的房间；房间码可以进入未公开的房间。
+// 大厅分别展示招募中的公开房间、公开回看和我已加入的房间。
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { request, send } from '../../api'
 import SoupPicker from '../shared/SoupPicker.vue'
@@ -12,24 +12,31 @@ const props = defineProps({
 })
 const emit = defineEmits(['room', 'login', 'back'])
 const rooms = ref([])
+const replays = ref([])
 const mine = ref([])
 const history = ref([])
 const code = ref(props.initialCode)
 const error = ref('')
+const replayError = ref('')
 const historyError = ref('')
 const loading = ref(false)
+const loadingReplays = ref(false)
 const loadingHistory = ref(false)
 const loadingMore = ref(false)
+const loadingMoreReplays = ref(false)
 const loadingMoreHistory = ref(false)
 const hasMoreRooms = ref(false)
+const hasMoreReplays = ref(false)
 const hasMoreHistory = ref(false)
 const moreError = ref('')
+const replayMoreError = ref('')
+const replayLoaded = ref(false)
 const busy = ref(false)
 const showCreate = ref(!!props.initialSoupId || !!props.initialDraft)
 const tab = ref('public')
-const listedRooms = computed(() => tab.value === 'mine' ? mine.value : tab.value === 'history' ? history.value : rooms.value)
-const listLoading = computed(() => tab.value === 'history' ? loadingHistory.value : loading.value)
-const listError = computed(() => tab.value === 'history' ? historyError.value : error.value)
+const listedRooms = computed(() => tab.value === 'replay' ? replays.value : tab.value === 'mine' ? mine.value : tab.value === 'history' ? history.value : rooms.value)
+const listLoading = computed(() => tab.value === 'replay' ? loadingReplays.value : tab.value === 'history' ? loadingHistory.value : loading.value)
+const listError = computed(() => tab.value === 'replay' ? replayError.value : tab.value === 'history' ? historyError.value : error.value)
 const draft = props.initialDraft || {}
 const form = reactive({
   soupId: draft.soupId || props.initialSoupId,
@@ -40,6 +47,7 @@ const form = reactive({
 })
 const selectedSoup = ref(null)
 let loadVersion = 0
+let replayVersion = 0
 let historyVersion = 0
 let soupVersion = 0
 
@@ -89,6 +97,47 @@ async function loadHistory() {
   }
 }
 
+async function loadReplays() {
+  const version = ++replayVersion
+  loadingReplays.value = true
+  loadingMoreReplays.value = false
+  hasMoreReplays.value = false
+  replayMoreError.value = ''
+  replayError.value = ''
+  replayLoaded.value = false
+  replays.value = []
+  try {
+    const next = await request('/api/rooms/replays')
+    if (version !== replayVersion) return
+    replays.value = next
+    hasMoreReplays.value = next.length === 50
+    replayLoaded.value = true
+  } catch (cause) {
+    if (version === replayVersion) replayError.value = cause.message
+  } finally {
+    if (version === replayVersion) loadingReplays.value = false
+  }
+}
+
+async function loadMoreReplays() {
+  if (loadingReplays.value || loadingMoreReplays.value || !hasMoreReplays.value || !replays.value.length) return
+  const version = replayVersion
+  const before = replays.value.at(-1).id
+  loadingMoreReplays.value = true
+  replayMoreError.value = ''
+  try {
+    const next = await request(`/api/rooms/replays?before=${before}`)
+    if (version !== replayVersion) return
+    const seen = new Set(replays.value.map(room => room.id))
+    replays.value = [...replays.value, ...next.filter(room => !seen.has(room.id))]
+    hasMoreReplays.value = next.length === 50
+  } catch (cause) {
+    if (version === replayVersion) replayMoreError.value = cause.message
+  } finally {
+    if (version === replayVersion) loadingMoreReplays.value = false
+  }
+}
+
 async function loadMoreHistory() {
   if (loadingHistory.value || loadingMoreHistory.value || !hasMoreHistory.value || !history.value.length) return
   const version = historyVersion
@@ -111,11 +160,13 @@ async function loadMoreHistory() {
 function refresh() {
   load()
   loadHistory()
+  replayLoaded.value = false
+  if (tab.value === 'replay') loadReplays()
 }
 
 function roomInfo(room, source) {
   const status = { waiting: '等待开始', active: '进行中', paused: '已暂停', finished: '已结束', closed: '已关闭' }[room.status] || room.status
-  if (source === 'public') return [status, `难度 ${room.difficulty}/5`, `恐怖 ${room.horror}/5`].join(' · ')
+  if (source === 'public' || source === 'replay') return [status, `难度 ${room.difficulty}/5`, `恐怖 ${room.horror}/5`].join(' · ')
   const role = { host: '主持', player: '玩家', spectator: '旁观' }[room.myRole] || '成员'
   return [status, role, room.public ? '公开' : '私密'].join(' · ')
 }
@@ -168,6 +219,9 @@ async function create() {
 }
 
 watch(() => props.user?.id, refresh, { immediate: true })
+watch(tab, value => {
+  if (value === 'replay' && !replayLoaded.value && !loadingReplays.value) loadReplays()
+})
 watch(() => props.initialSoupId, id => {
   if (!id) return
   form.soupId = id
@@ -183,7 +237,7 @@ watch(() => form.soupId, async id => {
     if (version === soupVersion) selectedSoup.value = soup
   } catch { /* 选题组件会显示具体错误。 */ }
 }, { immediate: true })
-onUnmounted(() => { loadVersion++; historyVersion++; soupVersion++ })
+onUnmounted(() => { loadVersion++; replayVersion++; historyVersion++; soupVersion++ })
 </script>
 
 <template>
@@ -235,32 +289,38 @@ onUnmounted(() => { loadVersion++; historyVersion++; soupVersion++ })
       <template v-else>
         <div class="play-lobby-grid">
           <section class="play-lobby-board" :class="{ 'play-lobby-board-empty': !listedRooms.length && !listLoading }">
-            <div class="play-card-heading"><div><span class="play-eyebrow">OPEN ROOMS</span><h2>{{ tab === 'public' ? '正在招募的房间' : tab === 'mine' ? '我的房间' : '房间记录' }}</h2></div><span class="play-count">{{ listedRooms.length }} 间</span></div>
+            <div class="play-card-heading"><div><span class="play-eyebrow">{{ tab === 'replay' ? 'ROOM ARCHIVE' : 'OPEN ROOMS' }}</span><h2>{{ tab === 'public' ? '正在招募的房间' : tab === 'replay' ? '公开回看' : tab === 'mine' ? '我的房间' : '房间记录' }}</h2></div><span class="play-count">{{ listedRooms.length }} 间</span></div>
             <div class="play-lobby-tabs" role="group" aria-label="房间列表">
               <button :class="{ selected: tab === 'public' }" :aria-pressed="tab === 'public'" @click="tab = 'public'">公开房间</button>
+              <button :class="{ selected: tab === 'replay' }" :aria-pressed="tab === 'replay'" @click="tab = 'replay'">公开回看</button>
               <button v-if="user" :class="{ selected: tab === 'mine' }" :aria-pressed="tab === 'mine'" @click="tab = 'mine'">我的房间</button>
               <button v-if="user" :class="{ selected: tab === 'history' }" :aria-pressed="tab === 'history'" @click="tab = 'history'">房间记录</button>
-              <button class="play-link play-list-refresh" :disabled="loading || loadingHistory" @click="refresh">刷新 ↻</button>
+              <button class="play-link play-list-refresh" :disabled="loading || loadingReplays || loadingHistory" @click="refresh">刷新 ↻</button>
             </div>
             <div class="play-room-list">
               <p v-if="listLoading" role="status" class="play-empty">正在加载房间…</p>
-              <p v-else-if="!listedRooms.length && !listError" class="play-empty">{{ tab === 'public' ? '暂无公开房间。' : tab === 'mine' ? '暂无进行中的房间。' : '暂无房间记录。' }}</p>
+              <p v-else-if="!listedRooms.length && !listError" class="play-empty">{{ tab === 'public' ? '暂无公开房间。' : tab === 'replay' ? '暂无可回看的公开房间。' : tab === 'mine' ? '暂无进行中的房间。' : '暂无房间记录。' }}</p>
               <article v-for="(item, index) in listedRooms" :key="item.id" class="play-room-row">
                 <span class="play-row-number">{{ String(index + 1).padStart(2, '0') }}</span>
                 <div class="play-room-row-body">
                   <h3>{{ item.title }}</h3>
-                  <div class="play-row-meta"><span class="play-soup-tags"><span>{{ item.mode === 'casual' ? '共探' : '竞答' }}</span><span>{{ item.genre || (item.public ? '公开' : '私密') }}</span></span><small>{{ roomInfo(item, tab) }} · {{ item.players }}/{{ item.maxPlayers }} 玩家</small></div>
+                  <div class="play-row-meta"><span class="play-soup-tags"><span>{{ item.mode === 'casual' ? '共探' : '竞答' }}</span><span>{{ item.genre || (tab === 'replay' || item.public ? '公开' : '私密') }}</span></span><small>{{ roomInfo(item, tab) }}<template v-if="tab === 'replay'"> · {{ item.answerPublished ? '汤底已公开' : '汤底尚未公开' }}</template><template v-else> · {{ item.players }}/{{ item.maxPlayers }} 玩家</template></small></div>
                 </div>
-                <button class="play-ticket play-ticket-small" :class="index % 2 ? 'play-ticket-cyan' : 'play-ticket-coral'" :disabled="busy" @click="tab === 'public' ? join(item.code) : emit('room', item.id)">{{ tab === 'history' ? '回看' : item.status === 'active' && item.mode === 'competitive' ? '旁观' : '进入房间' }} →</button>
+                <button class="play-ticket play-ticket-small" :class="index % 2 ? 'play-ticket-cyan' : 'play-ticket-coral'" :disabled="busy" @click="tab === 'public' || tab === 'replay' ? join(item.code) : emit('room', item.id)">{{ tab === 'history' || tab === 'replay' ? '回看' : item.status === 'active' && item.mode === 'competitive' ? '旁观' : '进入房间' }} →</button>
               </article>
             </div>
+            <p v-if="tab === 'replay' && replayError" role="alert" class="play-alert">{{ replayError }}</p>
+            <p v-if="tab === 'replay' && replayMoreError" role="alert" class="play-alert">{{ replayMoreError }}</p>
             <p v-if="tab === 'history' && historyError" role="alert" class="play-alert">{{ historyError }}</p>
             <p v-if="tab === 'public' && moreError" role="alert" class="play-alert">{{ moreError }}</p>
             <div class="play-list-foot">
               <button v-if="tab === 'public' && hasMoreRooms" class="play-link" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多房间 ↓' }}</button>
+              <button v-if="tab === 'replay' && hasMoreReplays" class="play-link" :disabled="loadingMoreReplays" @click="loadMoreReplays">{{ loadingMoreReplays ? '加载中…' : '加载更多回看 ↓' }}</button>
+              <button v-if="tab === 'replay' && replayError && !replays.length" class="play-link" @click="loadReplays">重试</button>
               <button v-if="tab === 'history' && hasMoreHistory" class="play-link" :disabled="loadingMoreHistory" @click="loadMoreHistory">{{ loadingMoreHistory ? '加载中…' : '加载更多记录 ↓' }}</button>
               <button v-if="tab === 'history' && historyError && !history.length" class="play-link" @click="loadHistory">重试</button>
               <span v-if="tab === 'public'">竞答开局后不能加入；共探进行中仍可进入。</span>
+              <span v-if="tab === 'replay'">汤底公开后会剧透，回看成员也将失去同题玩家资格。</span>
             </div>
           </section>
           <aside class="play-lobby-tools">

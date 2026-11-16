@@ -30,6 +30,7 @@ func NewHandler(db *pgxpool.Pool, auth *account.Handler) *Handler {
 func (h *Handler) NotifyRoom(id int64) { h.liveHub.notify(id) }
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/api/rooms", h.list)
+	r.GET("/api/rooms/replays", h.listReplays)
 	r.GET("/api/rooms/mine", h.listMine)
 	r.GET("/api/rooms/mine/history", h.listMineHistory)
 	r.POST("/api/rooms", h.create)
@@ -297,7 +298,8 @@ func (h *Handler) join(c *gin.Context) {
 	var id, soupID int64
 	var status, mode string
 	var max int
-	e = tx.QueryRow(c.Request.Context(), `SELECT id,soup_id,status,mode,max_players FROM rooms WHERE code=$1 FOR UPDATE`, code).Scan(&id, &soupID, &status, &mode, &max)
+	var public, answerPublished bool
+	e = tx.QueryRow(c.Request.Context(), `SELECT id,soup_id,status,mode,max_players,public,answer_published FROM rooms WHERE code=$1 FOR UPDATE`, code).Scan(&id, &soupID, &status, &mode, &max, &public, &answerPublished)
 	if e != nil {
 		fail(c, e)
 		return
@@ -312,18 +314,26 @@ func (h *Handler) join(c *gin.Context) {
 		c.JSON(200, gin.H{"id": id})
 		return
 	}
-	if status == "finished" {
-		c.JSON(http.StatusConflict, gin.H{"error": "对局已结束"})
+	finishedReplay := status == "finished"
+	publishedReplay := finishedReplay && answerPublished
+	// 旧的 8 位私密房间码较易猜测，不用于向新访客开放历史记录。
+	if finishedReplay && !public && len(code) != 32 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "房间不存在"})
 		return
 	}
 	var authorID int64
-	e = tx.QueryRow(c.Request.Context(), `SELECT author_id FROM soups WHERE id=$1 FOR UPDATE`, soupID).Scan(&authorID)
+	var visible bool
+	e = tx.QueryRow(c.Request.Context(), `SELECT author_id,deleted_at IS NULL AND hidden_at IS NULL FROM soups WHERE id=$1 FOR UPDATE`, soupID).Scan(&authorID, &visible)
 	if e != nil {
 		fail(c, e)
 		return
 	}
+	if finishedReplay && !visible {
+		c.JSON(http.StatusNotFound, gin.H{"error": "房间不存在"})
+		return
+	}
 	role := "player"
-	if (status == "active" || status == "paused") && mode == "competitive" {
+	if finishedReplay || (status == "active" || status == "paused") && mode == "competitive" {
 		role = "spectator"
 	}
 	var revealed, aiPlaying bool
@@ -336,6 +346,17 @@ func (h *Handler) join(c *gin.Context) {
 	if aiPlaying {
 		c.JSON(409, gin.H{"error": "正在进行同题单人对局"})
 		return
+	}
+	if publishedReplay {
+		playing, checkErr := playingElsewhere(c.Request.Context(), tx, soupID, u.ID, id)
+		if checkErr != nil {
+			fail(c, checkErr)
+			return
+		}
+		if playing {
+			c.JSON(http.StatusConflict, gin.H{"error": "仍在其他同题房间推理，不能查看汤底"})
+			return
+		}
 	}
 	if authorID == u.ID || revealed {
 		role = "spectator"
@@ -351,7 +372,12 @@ func (h *Handler) join(c *gin.Context) {
 			role = "spectator"
 		}
 	}
-	_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,$3,$4)`, id, u.ID, role, authorID == u.ID || revealed)
+	seenAnswer := authorID == u.ID || revealed || publishedReplay
+	_, e = tx.Exec(c.Request.Context(), `INSERT INTO room_members(room_id,user_id,role,seen_answer) VALUES($1,$2,$3,$4)`, id, u.ID, role, seenAnswer)
+	if e == nil && publishedReplay {
+		// 房间公开汤底意味着新旁观者也已知底，后续同题入场必须受相同限制。
+		_, e = tx.Exec(c.Request.Context(), `INSERT INTO soup_reveals(soup_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, soupID, u.ID)
+	}
 	if e != nil {
 		fail(c, e)
 		return
