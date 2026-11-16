@@ -7,12 +7,17 @@ const emit = defineEmits(['action'])
 
 const names = computed(() => Object.fromEntries(props.room.members.map(item => [item.id, item.username])))
 const replied = computed(() => new Set(props.room.events.filter(item => item.parentId).map(item => item.parentId)))
+const players = computed(() => new Set(props.room.members.filter(item => item.role === 'player').map(item => item.id)))
+
+function staleRestore(event) {
+  return event.kind === 'restore' && !replied.value.has(event.id) && !players.value.has(event.userId)
+}
 
 function label(event) {
   if (event.kind === 'question') return event.body
   if (event.kind === 'answer') return '主持回答'
   if (event.kind === 'restore') return event.body || '提交了还原'
-  if (event.kind === 'restore_result') return '还原判定'
+  if (event.kind === 'restore_result') return event.result === '已失效' ? '还原已失效' : '还原判定'
   if (event.kind === 'answer_request') return '申请查看汤底'
   if (event.kind === 'answer_result') return '查看汤底申请'
   return event.kind
@@ -42,9 +47,10 @@ function actionType(kind) {
       <div class="play-record-body">
         <small>{{ names[event.subjectUserId || event.userId] || '成员' }} · {{ new Date(event.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}</small>
         <p>{{ label(event) }}</p>
-        <div v-if="room.myRole === 'host' && room.status === 'active' && !replied.has(event.id) && choices(event).length" class="play-verdict-actions">
+        <div v-if="room.myRole === 'host' && room.status === 'active' && !replied.has(event.id) && !staleRestore(event) && choices(event).length" class="play-verdict-actions">
           <button v-for="(result, choiceIndex) in choices(event)" :key="result" class="play-ticket play-ticket-small" :class="choiceIndex === 0 ? 'play-ticket-cyan' : choiceIndex === 1 ? 'play-ticket-coral' : 'play-ticket-plain'" :disabled="busy" @click="emit('action', actionType(event.kind), { eventId: event.id, result })">{{ result }}</button>
         </div>
+        <small v-if="room.myRole === 'host' && room.status === 'active' && staleRestore(event)">提交者已离席，本次还原失效</small>
       </div>
       <span v-if="event.result" class="play-verdict" :class="{ yes: ['是', '正确', '同意'].includes(event.result), no: ['否', '错误', '拒绝'].includes(event.result) }">{{ event.result }}</span>
     </article>

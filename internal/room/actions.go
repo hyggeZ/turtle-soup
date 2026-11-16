@@ -130,17 +130,21 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 		}
 		return "已提交还原", add("restore", in.Body, "", 0)
 	case "judge":
-		if status != "active" || role != "host" || !oneOf(in.Result, "正确", "错误", "不完整") || !eventReady(ctx, tx, id, in.EventID, "restore") {
+		if status != "active" || role != "host" || !oneOf(in.Result, "正确", "错误", "不完整") {
+			return bad()
+		}
+		// 还原者离席后，旧还原不能再被判定或赢得竞答。
+		player, ready, err := readyPlayerRestore(ctx, tx, id, in.EventID)
+		if err != nil {
+			return "", err
+		}
+		if !ready {
 			return bad()
 		}
 		if err := add("restore_result", "", in.Result, in.EventID); err != nil {
 			return "", err
 		}
 		if in.Result == "正确" {
-			var player int64
-			if err := tx.QueryRow(ctx, `SELECT user_id FROM room_events WHERE id=$1`, in.EventID).Scan(&player); err != nil {
-				return "", err
-			}
 			if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator',correct=TRUE WHERE room_id=$1 AND user_id=$2`, id, player); err != nil {
 				return "", err
 			}
@@ -192,6 +196,9 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 			return "", err
 		}
 		if in.Result == "同意" {
+			if err := invalidatePendingRestores(ctx, tx, id, player, user); err != nil {
+				return "", err
+			}
 			if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator',seen_answer=TRUE WHERE room_id=$1 AND user_id=$2`, id, player); err != nil {
 				return "", err
 			}
@@ -232,6 +239,9 @@ func perform(ctx context.Context, tx pgx.Tx, id, user, owner, host, soupID int64
 	case "retire":
 		if status != "active" || role != "player" {
 			return bad()
+		}
+		if err := invalidatePendingRestores(ctx, tx, id, user, user); err != nil {
+			return "", err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE room_members SET role='spectator' WHERE room_id=$1 AND user_id=$2`, id, user); err != nil {
 			return "", err
@@ -319,6 +329,30 @@ func eventReady(ctx context.Context, tx pgx.Tx, room, event int64, kind string) 
 	var count int
 	err := tx.QueryRow(ctx, `SELECT count(*) FROM room_events e WHERE e.id=$1 AND e.room_id=$2 AND e.kind=$3 AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id)`, event, room, kind).Scan(&count)
 	return err == nil && count == 1
+}
+
+func readyPlayerRestore(ctx context.Context, tx pgx.Tx, room, event int64) (int64, bool, error) {
+	if event < 1 {
+		return 0, false, nil
+	}
+	var player int64
+	err := tx.QueryRow(ctx, `SELECT e.user_id FROM room_events e
+		JOIN room_members m ON m.room_id=e.room_id AND m.user_id=e.user_id AND m.role='player'
+		WHERE e.id=$1 AND e.room_id=$2 AND e.kind='restore'
+		AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id)`, event, room).Scan(&player)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	return player, err == nil, err
+}
+
+// 离席时为未判定还原补一条系统结果，避免主持人继续看到待判按钮。
+func invalidatePendingRestores(ctx context.Context, tx pgx.Tx, room, player, actor int64) error {
+	_, err := tx.Exec(ctx, `INSERT INTO room_events(room_id,user_id,kind,result,parent_id)
+		SELECT e.room_id,$3,'restore_result','已失效',e.id FROM room_events e
+		WHERE e.room_id=$1 AND e.user_id=$2 AND e.kind='restore'
+		AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id)`, room, player, actor)
+	return err
 }
 
 func unansweredQuestion(ctx context.Context, tx pgx.Tx, room, user int64) (bool, error) {
