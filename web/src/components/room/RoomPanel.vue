@@ -319,7 +319,7 @@ onUnmounted(() => {
   clearInterval(clockTimer)
 })
 watch(() => [props.id, props.user?.id], resetRoom)
-watch(() => room.value?.status === 'active' && room.value?.myRole === 'host', value => emit('hosting', !!value), { immediate: true })
+watch(() => ['active', 'paused'].includes(room.value?.status) && room.value?.myRole === 'host', value => emit('hosting', !!value), { immediate: true })
 </script>
 
 <template>

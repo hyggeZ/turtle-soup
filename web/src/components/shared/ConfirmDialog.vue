@@ -6,6 +6,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, required: true },
   message: { type: String, required: true },
+  label: { type: String, default: '确认操作' },
   confirmText: { type: String, default: '确定' },
   cancelText: { type: String, default: '取消' },
   danger: { type: Boolean, default: false },
@@ -19,7 +20,7 @@ watch(() => props.open, async value => {
   if (value) {
     previousFocus = document.activeElement
     await nextTick()
-    panel.value?.querySelector('[data-cancel]')?.focus()
+    panel.value?.querySelector('[data-cancel], .confirm-button')?.focus()
   } else {
     await nextTick()
     if (previousFocus?.isConnected) previousFocus.focus()
@@ -67,11 +68,11 @@ function keydown(event) {
     <div v-if="open" class="confirm-shade" @click.self="cancel">
       <section ref="panel" class="confirm-sheet" role="dialog" aria-modal="true" :aria-labelledby="titleId" @keydown="keydown">
         <div class="confirm-symbol" aria-hidden="true">!</div>
-        <p class="confirm-label">确认操作</p>
+        <p class="confirm-label">{{ label }}</p>
         <h2 :id="titleId">{{ title }}</h2>
         <p class="confirm-message">{{ message }}</p>
         <div class="confirm-actions">
-          <button type="button" class="confirm-button confirm-button--quiet" data-cancel @click="cancel">{{ cancelText }}</button>
+          <button v-if="cancelText" type="button" class="confirm-button confirm-button--quiet" data-cancel @click="cancel">{{ cancelText }}</button>
           <button type="button" class="confirm-button" :class="{ 'confirm-button--danger': danger }" @click="confirm">{{ confirmText }}</button>
         </div>
       </section>

@@ -30,7 +30,6 @@ const loginTarget = ref('home')
 const hostingRoom = ref(false)
 const leaveOpen = ref(false)
 const adminPage = window.location.pathname.startsWith('/admin')
-let leaveAction = null
 
 function roomViewKey(userId) { return 'turtle_room_view_' + userId }
 
@@ -56,25 +55,15 @@ function clearRoomView() {
   if (user.value) sessionStorage.removeItem(roomViewKey(user.value.id))
 }
 
-// 主持人离开前确认；其他页面不需要知道房间的离开规则。
+// 进行中或暂停中的主持人不能主动离开；房间结束后才开放返回入口。
 function afterRoom(action) {
   if (page.value === 'room' && hostingRoom.value) {
-    leaveAction = action
     leaveOpen.value = true
     return
   }
   if (page.value === 'room') clearRoomView()
   action()
 }
-
-function confirmLeave() {
-  const action = leaveAction
-  leaveAction = null
-  clearRoomView()
-  action?.()
-}
-
-function cancelLeave() { leaveAction = null }
 
 function enter(next, values = {}) {
   afterRoom(() => {
@@ -239,10 +228,10 @@ onMounted(loadUser)
   </div>
   <ConfirmDialog
     v-model:open="leaveOpen"
-    title="离开当前对局？"
-    message="房主离开后，对局会暂停。你返回房间后可以继续主持。"
-    confirm-text="确认离开"
-    @confirm="confirmLeave"
-    @cancel="cancelLeave"
+    label="对局提示"
+    title="主持期间不能离开"
+    message="对局结束后可以返回大厅。意外断线时对局会暂停，重连后恢复。"
+    confirm-text="知道了"
+    cancel-text=""
   />
 </template>
