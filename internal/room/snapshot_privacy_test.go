@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -156,6 +157,17 @@ func TestOldHostSnapshotDoesNotSeeNewPrivateRestore(t *testing.T) {
 		t.Fatal("快照没有到达身份查询屏障")
 	}
 	action(0, "host_approve", "approve_host_01", users[1], "")
+	server := httptest.NewServer(router)
+	defer server.Close()
+	header := http.Header{}
+	header.Set("Cookie", cookies[1].String())
+	header.Set("Origin", server.URL)
+	socketURL := "ws" + strings.TrimPrefix(server.URL, "http") + path + "/ws"
+	hostSocket, _, err := websocket.Dial(ctx, socketURL, &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatalf("新主持实时连接失败：%v", err)
+	}
+	defer hostSocket.CloseNow()
 	action(0, "start", "start_game_01", 0, "")
 	secret := "新主持才可看的私密还原"
 	action(2, "restore", "private_restore_01", 0, secret)

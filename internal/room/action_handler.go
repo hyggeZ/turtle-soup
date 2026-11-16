@@ -84,6 +84,11 @@ func (h *Handler) action(c *gin.Context) {
 		c.JSON(200, result)
 		return
 	}
+	// 已持有房间行锁；若主持此后断线，暂停操作会等开局提交后再更新状态。
+	if in.Type == "start" && status == "waiting" && host != nil && !h.liveHub.hasUser(id, *host) {
+		c.JSON(http.StatusConflict, gin.H{"error": "主持人未在线，暂时不能开局"})
+		return
+	}
 	hostID := int64(0)
 	if host != nil {
 		hostID = *host

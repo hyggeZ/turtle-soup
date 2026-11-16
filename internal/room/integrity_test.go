@@ -247,6 +247,26 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	if res := call(http.MethodPatch, settingsPath, settings, cookies[1]); res.Code != http.StatusNoContent {
 		t.Fatalf("等待期修改设置失败：%d %s", res.Code, res.Body.String())
 	}
+	if res := action(cookies[1], "start", "offline_start_001", nil); res.Code != http.StatusConflict {
+		t.Fatalf("主持人离线仍可开局：%d %s", res.Code, res.Body.String())
+	}
+	server := httptest.NewServer(router)
+	defer server.Close()
+	socketURL := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/api/rooms/%d/ws", roomID2)
+	dial := func(id int64, cookie *http.Cookie) *websocket.Conn {
+		t.Helper()
+		header := http.Header{}
+		header.Set("Cookie", cookie.String())
+		header.Set("Origin", server.URL)
+		url := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/api/rooms/%d/ws", id)
+		conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: header})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return conn
+	}
+	conn := dial(roomID2, cookies[2])
+	defer conn.CloseNow()
 	if res := action(cookies[1], "start", "start_001", nil); res.Code != http.StatusOK {
 		t.Fatalf("开局失败：%d %s", res.Code, res.Body.String())
 	}
@@ -295,24 +315,9 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 	}
 
 	// 实时连接只发送变化提示；主持人离线后暂停，重连后恢复。
-	server := httptest.NewServer(router)
-	defer server.Close()
-	socketURL := "ws" + strings.TrimPrefix(server.URL, "http") + path + "/ws"
-	dial := func(cookie *http.Cookie) *websocket.Conn {
-		t.Helper()
-		header := http.Header{}
-		header.Set("Cookie", cookie.String())
-		header.Set("Origin", server.URL)
-		conn, _, err := websocket.Dial(ctx, socketURL, &websocket.DialOptions{HTTPHeader: header})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return conn
-	}
-	conn := dial(cookies[2])
-	conn2 := dial(cookies[2])
+	conn2 := dial(roomID2, cookies[2])
 	defer conn2.CloseNow()
-	conn3 := dial(cookies[2])
+	conn3 := dial(roomID2, cookies[2])
 	defer conn3.CloseNow()
 	header := http.Header{}
 	header.Set("Cookie", cookies[2].String())
@@ -351,10 +356,13 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		t.Fatalf("房间未进入 %s 状态", want)
 	}
 	waitStatus("paused")
+	if res := action(cookies[1], "start", "start_001", nil); res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"duplicate":true`) {
+		t.Fatalf("主持断线后开局重试未返回原结果：%d %s", res.Code, res.Body.String())
+	}
 	if res := action(cookies[1], "question", "question_002", map[string]any{"body": "暂停期间的问题"}); res.Code != http.StatusConflict {
 		t.Fatalf("暂停期间仍可提问：%d %s", res.Code, res.Body.String())
 	}
-	conn = dial(cookies[2])
+	conn = dial(roomID2, cookies[2])
 	defer conn.CloseNow()
 	waitStatus("active")
 	if res := call(http.MethodPost, joinPath, joinBody, cookies[0]); res.Code != http.StatusOK {
@@ -499,6 +507,8 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		}
 	}
 	actionPath = fmt.Sprintf("/api/rooms/%d/actions", roomID3)
+	competitiveHost := dial(roomID3, cookies[1])
+	defer competitiveHost.CloseNow()
 	if res := action(cookies[1], "start", "comp_start_001", nil); res.Code != http.StatusOK {
 		t.Fatalf("竞答开局失败：%d %s", res.Code, res.Body.String())
 	}
@@ -590,6 +600,8 @@ func TestAnswerRevealAndRoomJoin(t *testing.T) {
 		t.Fatalf("房主仍在其他房间推理时换题取得汤底：%d %s", res.Code, res.Body.String())
 	}
 	actionPath = fmt.Sprintf("/api/rooms/%d/actions", roomID4)
+	turnHost := dial(roomID4, cookies[4])
+	defer turnHost.CloseNow()
 	if res := action(cookies[4], "start", "turn_start_001", nil); res.Code != http.StatusOK {
 		t.Fatalf("三人竞答开局失败：%d %s", res.Code, res.Body.String())
 	}
