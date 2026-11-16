@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"turtle-soup/internal/account"
+	"turtle-soup/internal/telemetry"
 	"turtle-soup/migrations"
 )
 
@@ -64,7 +65,17 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	}
 	gin.SetMode(gin.TestMode)
 	ctx := context.Background()
-	db, err := pgxpool.New(ctx, url)
+	monitor, err := telemetry.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = monitor.Close() })
+	config, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.Tracer = monitor
+	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +93,7 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	decider := &testDecider{started: make(chan struct{}, 1), release: make(chan struct{})}
 	auth := account.NewHandler(account.NewPGStore(db), false)
 	router := gin.New()
+	router.Use(monitor.Middleware())
 	NewHandler(NewStore(db), auth, decider).Register(router)
 
 	var users [3]int64
@@ -144,13 +156,13 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	if err := db.QueryRow(ctx, `INSERT INTO soups(author_id,title,surface,answer,genre,difficulty,horror) VALUES($1,'测试题','测试汤面','测试汤底','本格',2,1) RETURNING id`, users[0]).Scan(&soupID); err != nil {
 		t.Fatal(err)
 	}
-	call := func(method, path string, body any, cookie *http.Cookie) *httptest.ResponseRecorder {
+	callContext := func(callCtx context.Context, method, path string, body any, cookie *http.Cookie) *httptest.ResponseRecorder {
 		t.Helper()
 		data, err := json.Marshal(body)
 		if err != nil {
 			t.Fatal(err)
 		}
-		request := httptest.NewRequest(method, path, bytes.NewReader(data))
+		request := httptest.NewRequest(method, path, bytes.NewReader(data)).WithContext(callCtx)
 		request.Header.Set("Content-Type", "application/json")
 		if cookie != nil {
 			request.AddCookie(cookie)
@@ -158,6 +170,20 @@ func TestSoloGameWithPostgres(t *testing.T) {
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		return response
+	}
+	call := func(method, path string, body any, cookie *http.Cookie) *httptest.ResponseRecorder {
+		return callContext(ctx, method, path, body, cookie)
+	}
+	findTrace := func(response *httptest.ResponseRecorder) telemetry.Record {
+		t.Helper()
+		id := response.Header().Get("X-Trace-ID")
+		for _, record := range monitor.Snapshot().Recent {
+			if record.TraceID == id {
+				return record
+			}
+		}
+		t.Fatalf("找不到请求链路：%s", id)
+		return telemetry.Record{}
 	}
 
 	created := call(http.MethodPost, "/api/ai/solo", map[string]any{"soupId": soupID}, cookies[1])
@@ -185,7 +211,11 @@ func TestSoloGameWithPostgres(t *testing.T) {
 		return call(http.MethodPost, actionPath, map[string]string{"type": kind, "body": body, "operationId": key}, cookies[1])
 	}
 	first := make(chan *httptest.ResponseRecorder, 1)
-	go func() { first <- action("question", "first", "question_001") }()
+	firstCtx, cancelFirst := context.WithCancel(ctx)
+	go func() {
+		first <- callContext(firstCtx, http.MethodPost, actionPath,
+			map[string]string{"type": "question", "body": "first", "operationId": "question_001"}, cookies[1])
+	}()
 	select {
 	case <-decider.started:
 	case <-time.After(3 * time.Second):
@@ -194,12 +224,47 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	if busy := action("question", "second", "question_002"); busy.Code != http.StatusConflict {
 		t.Fatalf("并发操作未互斥：%d %s", busy.Code, busy.Body.String())
 	}
+	// 模型返回判定后，即使请求上下文已取消，也要完成指标与结果落库。
+	cancelFirst()
 	close(decider.release)
-	if res := <-first; res.Code != http.StatusOK {
-		t.Fatalf("首次提问失败：%d %s", res.Code, res.Body.String())
+	firstResponse := <-first
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("首次提问失败：%d %s", firstResponse.Code, firstResponse.Body.String())
 	}
-	if repeated := action("question", "first", "question_001"); repeated.Code != http.StatusOK || !strings.Contains(repeated.Body.String(), `"duplicate":true`) {
+	firstTrace := findTrace(firstResponse)
+	stages := make(map[string]bool)
+	var persistStart float64
+	for _, span := range firstTrace.Spans {
+		stages[span.Name] = true
+		if span.Name == "ai.persist" {
+			persistStart = span.StartMS
+		}
+	}
+	for _, name := range []string{"ai.claim", "ai.history", "ai.model", "ai.validate", "ai.decision", "ai.attempt", "ai.persist", "db.query"} {
+		if !stages[name] {
+			t.Fatalf("首次提问缺少 %s 阶段：%+v", name, firstTrace.Spans)
+		}
+	}
+	if persistStart <= 0 || firstTrace.DBCount == 0 {
+		t.Fatalf("断线后的结果落库没有关联追踪：%+v", firstTrace)
+	}
+	var persistQuery bool
+	for _, span := range firstTrace.Spans {
+		if span.Name == "db.query" && span.StartMS >= persistStart {
+			persistQuery = true
+		}
+	}
+	if !persistQuery {
+		t.Fatal("断线后提交的数据库查询没有归属原链路")
+	}
+	repeated := action("question", "first", "question_001")
+	if repeated.Code != http.StatusOK || !strings.Contains(repeated.Body.String(), `"duplicate":true`) {
 		t.Fatalf("同一操作未去重：%d %s", repeated.Code, repeated.Body.String())
+	}
+	for _, span := range findTrace(repeated).Spans {
+		if span.Name == "ai.model" || span.Name == "ai.persist" {
+			t.Fatalf("重复请求再次调用模型或提交：%s", span.Name)
+		}
 	}
 	if mismatch := action("question", "changed", "question_001"); mismatch.Code != http.StatusConflict {
 		t.Fatalf("复用操作 ID 修改内容：%d %s", mismatch.Code, mismatch.Body.String())
@@ -207,8 +272,21 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	if decider.calls.Load() != 1 {
 		t.Fatal("重复操作再次调用了模型")
 	}
-	if failed := action("question", "fail", "question_003"); failed.Code != http.StatusServiceUnavailable {
+	failed := action("question", "fail", "question_003")
+	if failed.Code != http.StatusServiceUnavailable {
 		t.Fatalf("模型失败没有正确返回：%d %s", failed.Code, failed.Body.String())
+	}
+	var failedModel, released bool
+	for _, span := range findTrace(failed).Spans {
+		if span.Name == "ai.model" && span.Failed {
+			failedModel = true
+		}
+		if span.Name == "ai.release" {
+			released = true
+		}
+	}
+	if !failedModel || !released {
+		t.Fatal("模型失败时未标记阶段或释放租约")
 	}
 	var events, failedAttempts int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM ai_events WHERE game_id=$1`, gameID).Scan(&events); err != nil || events != 1 {

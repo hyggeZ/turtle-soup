@@ -290,17 +290,19 @@ func (s *Store) Complete(ctx context.Context, user, id int64, operationID, kind,
 	return "", nil
 }
 
-func (s *Store) Release(ctx context.Context, user, id int64, operationID string) {
-	_, _ = s.db.Exec(ctx, `UPDATE ai_games SET busy_op=NULL,busy_until=NULL WHERE id=$1 AND user_id=$2 AND busy_op=$3`, id, user, operationID)
+func (s *Store) Release(ctx context.Context, user, id int64, operationID string) error {
+	_, err := s.db.Exec(ctx, `UPDATE ai_games SET busy_op=NULL,busy_until=NULL WHERE id=$1 AND user_id=$2 AND busy_op=$3`, id, user, operationID)
+	return err
 }
 
 // RecordAttempt 记录整个判定阶段的耗时，不写入模型请求和响应内容。
-func (s *Store) RecordAttempt(ctx context.Context, gameID int64, kind, model string, elapsed float64, err error) {
+func (s *Store) RecordAttempt(ctx context.Context, gameID int64, kind, model string, elapsed float64, err error) error {
 	errorKind := ""
 	if errors.Is(err, ErrInvalidOutput) {
 		errorKind = "invalid_output"
 	} else if err != nil {
 		errorKind = "provider_error"
 	}
-	_, _ = s.db.Exec(ctx, `INSERT INTO ai_attempts(game_id,kind,model,prompt_version,latency_ms,success,error_kind) VALUES($1,$2,$3,$4,$5,$6,$7)`, gameID, kind, model, PromptVersion, elapsed, err == nil, errorKind)
+	_, writeErr := s.db.Exec(ctx, `INSERT INTO ai_attempts(game_id,kind,model,prompt_version,latency_ms,success,error_kind) VALUES($1,$2,$3,$4,$5,$6,$7)`, gameID, kind, model, PromptVersion, elapsed, err == nil, errorKind)
+	return writeErr
 }

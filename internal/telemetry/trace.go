@@ -22,7 +22,9 @@ const maxRecords = 300
 
 type Span struct {
 	Name       string  `json:"name"`
+	StartMS    float64 `json:"startMs"`
 	DurationMS float64 `json:"durationMs"`
+	Failed     bool    `json:"failed,omitempty"`
 }
 
 type Record struct {
@@ -108,7 +110,7 @@ func newID() string {
 func (s *Store) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		started := time.Now()
-		trace := &requestTrace{record: Record{TraceID: newID(), Time: started, Method: c.Request.Method, Spans: make([]Span, 0, 4)}}
+		trace := &requestTrace{record: Record{TraceID: newID(), Time: started, Method: c.Request.Method, Spans: []Span{}}}
 		ctx := context.WithValue(c.Request.Context(), contextKey{}, trace)
 		c.Request = c.Request.WithContext(ctx)
 		c.Header("X-Trace-ID", trace.record.TraceID)
@@ -130,21 +132,49 @@ func ms(duration time.Duration) float64 {
 	return float64(duration) / float64(time.Millisecond)
 }
 
-// Begin 用于业务阶段；结束函数必须在该阶段返回时调用。
-func Begin(ctx context.Context, name string) func() {
+func startMS(trace *requestTrace, start time.Time) float64 {
+	return max(0, ms(start.Sub(trace.record.Time)))
+}
+
+func begin(ctx context.Context) (*requestTrace, time.Time) {
 	trace, _ := ctx.Value(contextKey{}).(*requestTrace)
+	if trace == nil {
+		return nil, time.Time{}
+	}
+	return trace, time.Now()
+}
+
+func addSpan(trace *requestTrace, name string, start time.Time, failed bool) {
+	duration := ms(time.Since(start))
+	trace.mu.Lock()
+	trace.record.Spans = append(trace.record.Spans, Span{
+		Name: name, StartMS: startMS(trace, start), DurationMS: duration, Failed: failed,
+	})
+	if name == "auth.session" {
+		trace.record.AuthMS += duration
+	}
+	trace.mu.Unlock()
+}
+
+// Begin 记录业务阶段；结束函数必须在该阶段返回时调用。
+func Begin(ctx context.Context, name string) func() {
+	trace, start := begin(ctx)
 	if trace == nil {
 		return func() {}
 	}
-	start := time.Now()
 	return func() {
-		duration := ms(time.Since(start))
-		trace.mu.Lock()
-		trace.record.Spans = append(trace.record.Spans, Span{Name: name, DurationMS: duration})
-		if name == "auth.session" {
-			trace.record.AuthMS += duration
-		}
-		trace.mu.Unlock()
+		addSpan(trace, name, start, false)
+	}
+}
+
+// BeginResult 除耗时外，还标记业务阶段是否失败；错误内容不会写入日志。
+func BeginResult(ctx context.Context, name string) func(error) {
+	trace, start := begin(ctx)
+	if trace == nil {
+		return func(error) {}
+	}
+	return func(err error) {
+		addSpan(trace, name, start, err != nil)
 	}
 }
 
@@ -170,7 +200,9 @@ func (s *Store) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQu
 	trace.mu.Lock()
 	trace.record.DBCount++
 	trace.record.DBMS += duration
-	trace.record.Spans = append(trace.record.Spans, Span{Name: name, DurationMS: duration})
+	trace.record.Spans = append(trace.record.Spans, Span{
+		Name: name, StartMS: startMS(trace, start), DurationMS: duration, Failed: data.Err != nil,
+	})
 	trace.mu.Unlock()
 }
 

@@ -172,7 +172,9 @@ func (h *Handler) action(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 主持尚未配置"})
 		return
 	}
+	endClaim := telemetry.BeginResult(c.Request.Context(), "ai.claim")
 	claim, decision, duplicate, err := h.store.Claim(c.Request.Context(), user, id, input.OperationID, input.Type, input.Body)
+	endClaim(err)
 	if err != nil {
 		h.replyError(c, err)
 		return
@@ -192,31 +194,40 @@ func (h *Handler) action(c *gin.Context) {
 		decision.Result = "已查看汤底"
 	} else {
 		started := time.Now()
-		endDecision := telemetry.Begin(c.Request.Context(), "ai.decision")
+		endDecision := telemetry.BeginResult(c.Request.Context(), "ai.decision")
 		decision, err = h.decide(c.Request.Context(), id, claim.Soup, input)
-		if err == nil && !validDecision(input.Type, decision.Result) {
-			err = ErrInvalidOutput
+		if err == nil {
+			endValidate := telemetry.BeginResult(c.Request.Context(), "ai.validate")
+			if !validDecision(input.Type, decision.Result) {
+				err = ErrInvalidOutput
+			}
+			endValidate(err)
 		}
-		endDecision()
+		endDecision(err)
 		model := decision.Model
 		if qwen, ok := h.decider.(*Qwen); ok && model == "" {
 			model = qwen.Model
 		}
-		metricCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
-		h.store.RecordAttempt(metricCtx, id, input.Type, model, float64(time.Since(started))/float64(time.Millisecond), err)
+		// 客户端断开后仍写入调用指标，并保留原请求的追踪信息。
+		metricCtx, stop := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
+		endAttempt := telemetry.BeginResult(metricCtx, "ai.attempt")
+		metricErr := h.store.RecordAttempt(metricCtx, id, input.Type, model, float64(time.Since(started))/float64(time.Millisecond), err)
+		endAttempt(metricErr)
 		stop()
 	}
 	if err != nil {
-		h.release(user, id, input.OperationID)
+		h.release(c.Request.Context(), user, id, input.OperationID)
 		h.replyError(c, err)
 		return
 	}
 	// 客户端中途断开时也要提交已完成的结果，让同一操作 ID 的重试可复用。
-	commitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
 	defer cancel()
+	endPersist := telemetry.BeginResult(commitCtx, "ai.persist")
 	answer, err := h.store.Complete(commitCtx, user, id, input.OperationID, input.Type, input.Body, decision)
+	endPersist(err)
 	if err != nil {
-		h.release(user, id, input.OperationID)
+		h.release(c.Request.Context(), user, id, input.OperationID)
 		h.replyError(c, err)
 		return
 	}
@@ -237,20 +248,28 @@ func validDecision(kind, result string) bool {
 func (h *Handler) decide(ctx context.Context, id int64, soup Soup, input actionInput) (Decision, error) {
 	modelCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	endHistory := telemetry.BeginResult(modelCtx, "ai.history")
 	history, err := h.store.History(modelCtx, id)
+	endHistory(err)
 	if err != nil {
 		return Decision{}, err
 	}
+	endModel := telemetry.BeginResult(modelCtx, "ai.model")
 	if input.Type == "question" {
-		return h.decider.DecideQuestion(modelCtx, soup, history, input.Body)
+		decision, err := h.decider.DecideQuestion(modelCtx, soup, history, input.Body)
+		endModel(err)
+		return decision, err
 	}
-	return h.decider.JudgeRestore(modelCtx, soup, history, input.Body)
+	decision, err := h.decider.JudgeRestore(modelCtx, soup, history, input.Body)
+	endModel(err)
+	return decision, err
 }
 
-func (h *Handler) release(user, id int64, operationID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func (h *Handler) release(requestCtx context.Context, user, id int64, operationID string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), 3*time.Second)
 	defer cancel()
-	h.store.Release(ctx, user, id, operationID)
+	endRelease := telemetry.BeginResult(ctx, "ai.release")
+	endRelease(h.store.Release(ctx, user, id, operationID))
 }
 
 func (h *Handler) replyError(c *gin.Context, err error) {

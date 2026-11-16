@@ -144,8 +144,7 @@
 .admin-ui .modal-actions { display: flex; justify-content: flex-end; gap: 11px; margin-top: 6px; }.admin-ui .modal-actions .action-button { min-height: 45px; }
 .admin-ui .account-strip { display: flex; align-items: center; gap: 8px; min-height: 62px; padding: 9px 12px; border: 1px dashed #c99b83; background: #f6e4ce; color: #765a56; font-size: 13px; }.admin-ui .account-strip .avatar { width: 33px; height: 33px; }.admin-ui .account-strip strong { color: #492c39; font-size: 15px; }.admin-ui .account-strip .pill { margin-left: auto; }
 .admin-ui .form-note { margin: -7px 0 0; color: #9a776c; font-size: 12px; }
-.admin-ui .trace-paper { width: min(100%,610px); }.admin-ui .trace-content { padding: 21px 31px 29px; }.admin-ui .trace-route { display: flex; align-items: center; gap: 13px; }.admin-ui .trace-route strong { color: #4d3442; font: 800 15px Consolas,monospace; }.admin-ui .trace-id { margin-top: 8px; color: #9d7e73; font: 11px Consolas,monospace; overflow-wrap: anywhere; }.admin-ui .trace-total { display: flex; align-items: end; justify-content: space-between; margin: 20px 0 13px; padding: 13px 17px; border-left: 5px solid #c35c58; background: #f3dbc3; color: #76514d; font-size: 13px; font-weight: 850; }.admin-ui .trace-total strong { color: #7e3241; font: 900 28px Georgia,'Microsoft YaHei',sans-serif; }.admin-ui .trace-total small { font-size: 13px; }.admin-ui .trace-timeline { position: relative; display: grid; gap: 5px; margin-left: 7px; }.admin-ui .trace-timeline::before { content: ''; position: absolute; left: 6px; top: 15px; bottom: 18px; width: 2px; background: #c68b78; }.admin-ui .trace-timeline > div { position: relative; display: grid; grid-template-columns: 145px 72px minmax(0,1fr); gap: 10px; align-items: center; min-height: 43px; padding-left: 28px; color: #604551; font-size: 12px; font-weight: 800; }.admin-ui .line-dot { position: absolute; z-index: 1; left: 0; top: 16px; width: 14px; height: 14px; border: 3px solid #b3565b; border-radius: 50%; background: #fff4df; }.admin-ui .trace-timeline em { color: #9c6f68; font-style: normal; text-align: right; }.admin-ui .trace-timeline b { display: block; height: 8px; background: #3d9098; }.admin-ui .trace-timeline > div:nth-child(4) b { background: #d77b63; }
-.admin-ui .ai-timeline > div:nth-child(3) .line-dot { border-color: #ad4455; }.admin-ui .ai-timeline > div:nth-child(3) b { background: linear-gradient(90deg,#a43d52,#df6c60); }.admin-ui .ai-timeline > div:nth-child(5) b { background: #d77b63; }
+.admin-ui .trace-paper { width: min(100%,610px); }.admin-ui .trace-content { padding: 21px 31px 29px; }.admin-ui .trace-route { display: flex; align-items: center; gap: 13px; }.admin-ui .trace-route strong { color: #4d3442; font: 800 15px Consolas,monospace; }.admin-ui .trace-id { margin-top: 8px; color: #9d7e73; font: 11px Consolas,monospace; overflow-wrap: anywhere; }.admin-ui .trace-total { display: flex; align-items: end; justify-content: space-between; margin: 20px 0 13px; padding: 13px 17px; border-left: 5px solid #c35c58; background: #f3dbc3; color: #76514d; font-size: 13px; font-weight: 850; }.admin-ui .trace-total strong { color: #7e3241; font: 900 28px Georgia,'Microsoft YaHei',sans-serif; }.admin-ui .trace-total small { font-size: 13px; }
 
 @media (max-width: 920px) {
   .admin-ui .admin-home { padding: 28px 28px 60px; }.admin-ui .module-grid { gap: 14px; }.admin-ui .module-ticket { min-height: 310px; padding: 21px 20px; }.admin-ui .module-ticket h2 { font-size: 24px; }.admin-ui .module-icon { width: 65px; height: 65px; }
@@ -162,7 +161,7 @@
   .admin-ui .panel-account, .admin-ui .panel-soups { padding: 18px 13px; }.admin-ui .paper-heading { align-items: start; padding-bottom: 13px; }.admin-ui .paper-heading > div { gap: 7px; flex-wrap: wrap; }.admin-ui .paper-heading h2 { font-size: 19px; }.admin-ui .paper-heading small { width: 100%; margin-left: 31px; font-size: 10px; }.admin-ui .section-number { width: 25px; height: 25px; font-size: 11px; }.admin-ui .paper-heading .action-button { min-height: 36px; padding: 6px 8px; font-size: 11px; }.admin-ui .toolbar { margin: 16px 0; }.admin-ui .search-field { flex: 1; }.admin-ui .search-field input, .admin-ui .select-wrap select { height: 38px; font-size: 11px; }.admin-ui .select-wrap { flex-basis: 105px; }.admin-ui .toolbar .action-button { min-height: 38px; padding: 7px 9px; font-size: 11px; }.admin-ui .paper-foot { font-size: 10px; }
   .admin-ui .panel-account .table-wrap { display: none; }.admin-ui .mobile-accounts { display: grid; gap: 10px; }.admin-ui .account-card { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 6px 12px; padding: 12px; border: 1px solid #d4ab94; background: #fff9ed; box-shadow: 3px 3px 0 #d6b5a0; }.admin-ui .account-card > div:first-child { grid-column: 1; display: flex; align-items: center; gap: 7px; min-width: 0; }.admin-ui .account-card .avatar { flex: 0 0 33px; width: 33px; height: 33px; margin: 0; }.admin-ui .account-card strong { color: #4b3340; font-size: 14px; }.admin-ui .account-card small { color: #a08277; font-size: 10px; }.admin-ui .account-card > .pill { grid-column: 2; justify-self: end; font-size: 10px; }.admin-ui .account-card > .status { grid-column: 1; margin-left: 41px; }.admin-ui .account-card > .row-actions { grid-column: 2; grid-row: 2; justify-self: end; }.admin-ui .account-card .mini-button { min-height: 29px; padding: 4px 6px; font-size: 10px; }
   .admin-ui .metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.admin-ui .metric-ticket { min-height: 115px; padding: 15px; }.admin-ui .metric-ticket:first-child { grid-column: 1/-1; }.admin-ui .metric-ticket strong { margin-top: 6px; font-size: 27px; }.admin-ui .metric-icon { top: 13px; right: 15px; width: 26px; height: 26px; font-size: 15px; }.admin-ui .metric-ticket > small { font-size: 9px; }.admin-ui .route-row { grid-template-columns: minmax(0,1fr) 80px; }.admin-ui .route-bar { display: none; }.admin-ui .log-card { padding: 18px 15px; }.admin-ui .stages-card { min-height: 260px; }.admin-ui .recent-card { padding: 18px 15px; }
-  .admin-ui .modal-layer { padding: 15px; }.admin-ui .modal-paper { max-height: calc(100vh - 30px); box-shadow: 6px 7px 0 #090e1abd, inset 0 0 0 4px #ffeed9, inset 0 0 0 5px #d4a187; }.admin-ui .modal-heading { gap: 11px; padding: 22px 19px 16px; }.admin-ui .modal-symbol { flex-basis: 39px; height: 39px; font-size: 25px; }.admin-ui .modal-heading h2 { font-size: 23px; }.admin-ui .modal-form { gap: 16px; padding: 19px 19px 22px; }.admin-ui .modal-form input, .admin-ui .modal-form select { height: 44px; }.admin-ui .modal-actions { gap: 8px; }.admin-ui .modal-actions .action-button { min-height: 41px; padding: 7px 11px; font-size: 12px; }.admin-ui .trace-content { padding: 17px 18px 22px; }.admin-ui .trace-timeline > div { grid-template-columns: 106px 57px minmax(0,1fr); gap: 5px; padding-left: 22px; font-size: 10px; }.admin-ui .trace-route strong { font-size: 12px; }.admin-ui .trace-id { font-size: 9px; }
+  .admin-ui .modal-layer { padding: 15px; }.admin-ui .modal-paper { max-height: calc(100vh - 30px); box-shadow: 6px 7px 0 #090e1abd, inset 0 0 0 4px #ffeed9, inset 0 0 0 5px #d4a187; }.admin-ui .modal-heading { gap: 11px; padding: 22px 19px 16px; }.admin-ui .modal-symbol { flex-basis: 39px; height: 39px; font-size: 25px; }.admin-ui .modal-heading h2 { font-size: 23px; }.admin-ui .modal-form { gap: 16px; padding: 19px 19px 22px; }.admin-ui .modal-form input, .admin-ui .modal-form select { height: 44px; }.admin-ui .modal-actions { gap: 8px; }.admin-ui .modal-actions .action-button { min-height: 41px; padding: 7px 11px; font-size: 12px; }.admin-ui .trace-content { padding: 17px 18px 22px; }.admin-ui .trace-route strong { font-size: 12px; }.admin-ui .trace-id { font-size: 9px; }
 }
 
 /* 生产组件的状态与语义标签。 */
@@ -181,11 +180,8 @@
 .admin-ui .admin-state { padding: 22px 8px; color: #94786e; font-size: 13px; }
 .admin-ui .admin-state.on-night { color: #ffe8ce; }
 .admin-ui .mobile-soups { display: none; }
-.admin-ui .trace-timeline > div { grid-template-columns: minmax(0,145px) 72px minmax(0,1fr); }
-.admin-ui .trace-timeline > div span { overflow-wrap: anywhere; }
 @media (max-width: 620px) {
   .admin-ui .identity-ticket button { margin-left: 2px; padding-left: 6px; font-size: 10px; }
-  .admin-ui .trace-timeline > div { grid-template-columns: minmax(0,106px) 57px minmax(0,1fr); }
   .admin-ui .admin-account-page .toolbar { flex-wrap: nowrap; }
   .admin-ui .admin-soups-page .toolbar { flex-wrap: wrap; }
   .admin-ui .panel-soups .table-wrap { display: none; }
@@ -206,4 +202,42 @@
   .admin-ui .account-card > div:first-child { gap: 5px; }
   .admin-ui .admin-soups-page .toolbar .search-field { flex: 0 0 100%; }
   .admin-ui .admin-soups-page .toolbar .select-wrap { flex: 1; }
+}
+
+/* 链路详情按照阶段起点显示耗时，嵌套阶段允许重叠。 */
+.admin-ui .trace-paper { width: min(100%, 800px); }
+.admin-ui .trace-timeline { display: grid; gap: 2px; margin-top: 14px; }
+.admin-ui .trace-span {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) 90px minmax(150px, 2fr) 80px;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-bottom: 1px dashed #d9b6a0;
+  color: #604551;
+  font-size: 12px;
+}
+.admin-ui .trace-span:nth-child(odd) { background: #f9ead8; }
+.admin-ui .trace-span-name { min-width: 0; font-weight: 850; overflow-wrap: anywhere; }
+.admin-ui .trace-span-name small { display: block; margin-top: 3px; color: #9d7e73; font: 10px Consolas, monospace; }
+.admin-ui .trace-span-name em { color: #a43d52; font-size: 10px; font-style: normal; }
+.admin-ui .trace-span-offset { color: #8e6863; font: 11px Consolas, monospace; white-space: nowrap; }
+.admin-ui .trace-span-track { position: relative; height: 16px; border: 1px solid #d2ae9f; background: repeating-linear-gradient(90deg, #ead1bc 0 1px, #f6e4d0 1px 24%); }
+.admin-ui .trace-span-track i { position: absolute; top: 2px; bottom: 2px; min-width: 2px; background: #3d9098; }
+.admin-ui .trace-span-failed .trace-span-track i { background: #b34f59; }
+.admin-ui .trace-span > strong { color: #613b46; font-size: 11px; text-align: right; white-space: nowrap; }
+.admin-ui .stage-failed .stage-track i { background: #b34f59; }
+
+@media (max-width: 620px) {
+  .admin-ui .trace-span {
+    grid-template-columns: minmax(0, 1fr) 90px 70px;
+    grid-template-areas: 'name offset duration' 'track track track';
+    gap: 5px 8px;
+    padding: 9px 6px;
+  }
+  .admin-ui .trace-span-name { grid-area: name; }
+  .admin-ui .trace-span-offset { grid-area: offset; font-size: 9px; }
+  .admin-ui .trace-span-track { grid-area: track; }
+  .admin-ui .trace-span > strong { grid-area: duration; font-size: 10px; }
 }
