@@ -153,6 +153,11 @@ func (s *Store) Get(ctx context.Context, user, id int64) (Game, error) {
 
 // Claim 用对局行锁和 90 秒租约挡住同一局的并发调用，模型调用在事务外进行。
 func (s *Store) Claim(ctx context.Context, user, id int64, operationID, kind, body string) (reservation, Decision, bool, error) {
+	return s.ClaimWithAvailability(ctx, user, id, operationID, kind, body, true)
+}
+
+// ClaimWithAvailability 在同一笔事务中先检查已完成操作，再决定是否占用模型额度。
+func (s *Store) ClaimWithAvailability(ctx context.Context, user, id int64, operationID, kind, body string, available bool) (reservation, Decision, bool, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return reservation{}, Decision{}, false, err
@@ -186,6 +191,9 @@ func (s *Store) Claim(ctx context.Context, user, id int64, operationID, kind, bo
 	}
 	if busyOp != nil && leaseActive {
 		return reservation{}, Decision{}, false, ErrBusy
+	}
+	if kind != "reveal" && !available {
+		return reservation{}, Decision{}, false, ErrUnavailable
 	}
 	var count int
 	if kind != "reveal" {

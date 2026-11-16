@@ -168,12 +168,8 @@ func (h *Handler) action(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请检查操作类型和内容长度"})
 		return
 	}
-	if input.Type != "reveal" && !h.ready() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 主持尚未配置"})
-		return
-	}
 	endClaim := telemetry.BeginResult(c.Request.Context(), "ai.claim")
-	claim, decision, duplicate, err := h.store.Claim(c.Request.Context(), user, id, input.OperationID, input.Type, input.Body)
+	claim, decision, duplicate, err := h.store.ClaimWithAvailability(c.Request.Context(), user, id, input.OperationID, input.Type, input.Body, h.ready())
 	endClaim(err)
 	if err != nil {
 		h.replyError(c, err)
