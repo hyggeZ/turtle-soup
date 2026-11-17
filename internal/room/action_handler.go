@@ -2,8 +2,10 @@ package room
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -81,6 +83,16 @@ func (h *Handler) action(c *gin.Context) {
 		if message != nil {
 			result["message"] = *message
 		}
+		if in.Type == "host_approve" {
+			if e = tx.Commit(c.Request.Context()); e != nil {
+				fail(c, e)
+				return
+			}
+			if e = h.syncApprovedHost(c.Request.Context(), id); e != nil {
+				fail(c, e)
+				return
+			}
+		}
 		c.JSON(200, result)
 		return
 	}
@@ -106,6 +118,32 @@ func (h *Handler) action(c *gin.Context) {
 		fail(c, e)
 		return
 	}
+	if in.Type == "host_approve" {
+		if e = h.syncApprovedHost(c.Request.Context(), id); e != nil {
+			fail(c, e)
+			return
+		}
+	}
 	h.liveHub.notify(id)
 	c.JSON(200, gin.H{"ok": true, "message": message})
+}
+
+// 重读并锁住已提交的现任主持，避免两个审批的提交后回调逆序覆盖新状态。
+func (h *Handler) syncApprovedHost(requestCtx context.Context, roomID int64) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), 3*time.Second)
+	defer cancel()
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var host *int64
+	if err := tx.QueryRow(ctx, `SELECT host_id FROM rooms WHERE id=$1 FOR UPDATE`, roomID).Scan(&host); err != nil {
+		return err
+	}
+	if host == nil {
+		return errors.New("房间没有主持人")
+	}
+	h.liveHub.changeHost(roomID, *host)
+	return tx.Commit(ctx)
 }

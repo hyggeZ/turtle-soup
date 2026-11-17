@@ -3,87 +3,13 @@ package room
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-const maxRoomConnections = 3
-const maxUserConnections = 12
-
-// liveHub 只推送“房间有变化”的提示；私有内容仍由带权限检查的 HTTP 快照提供。
-type liveHub struct {
-	mu      sync.Mutex
-	viewers map[int64]map[chan struct{}]struct{}
-	users   map[int64]map[int64]int
-	total   map[int64]int
-}
-
-func newLiveHub() *liveHub {
-	return &liveHub{
-		viewers: make(map[int64]map[chan struct{}]struct{}),
-		users:   make(map[int64]map[int64]int),
-		total:   make(map[int64]int),
-	}
-}
-
-// 每人每房间最多三个连接，跨房间也有总上限。
-func (h *liveHub) join(room, user int64) (chan struct{}, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.users[room][user] >= maxRoomConnections || h.total[user] >= maxUserConnections {
-		return nil, false
-	}
-	if h.viewers[room] == nil {
-		h.viewers[room] = make(map[chan struct{}]struct{})
-		h.users[room] = make(map[int64]int)
-	}
-	updates := make(chan struct{}, 1)
-	h.viewers[room][updates] = struct{}{}
-	h.users[room][user]++
-	h.total[user]++
-	return updates, true
-}
-
-func (h *liveHub) leave(room, user int64, updates chan struct{}) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	delete(h.viewers[room], updates)
-	h.users[room][user]--
-	h.total[user]--
-	if h.total[user] == 0 {
-		delete(h.total, user)
-	}
-	last := h.users[room][user] == 0
-	if last {
-		delete(h.users[room], user)
-	}
-	if len(h.viewers[room]) == 0 {
-		delete(h.viewers, room)
-		delete(h.users, room)
-	}
-	return last
-}
-
-func (h *liveHub) notify(room int64) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for updates := range h.viewers[room] {
-		select {
-		case updates <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (h *liveHub) hasUser(room, user int64) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.users[room][user] > 0
-}
 
 // 正常停机时记录暂停时刻；主持人重连后按这段停机时间顺延竞答回合。
 func PauseActive(ctx context.Context, db *pgxpool.Pool, at time.Time) error {
@@ -117,25 +43,13 @@ func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 	if !ok {
 		return
 	}
-	var member bool
-	err := h.db.QueryRow(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`, id, user.ID).Scan(&member)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !member {
-		c.JSON(403, gin.H{"error": "你不在房间中"})
-		return
-	}
-	// 升级前预留名额，超限时才能返回普通 HTTP 状态码。
-	updates, allowed := h.liveHub.join(id, user.ID)
-	if !allowed {
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "实时连接数过多，请关闭多余页面"})
+	updates, evict, ok := h.admitLive(c, id, user.ID)
+	if !ok {
 		return
 	}
 	conn, err := websocket.Accept(c.Writer, c.Request, nil)
 	if err != nil {
-		if h.liveHub.leave(id, user.ID, updates) {
+		if h.liveHub.leave(id, updates) {
 			h.pauseIfHost(id, user.ID)
 		}
 		return
@@ -144,9 +58,12 @@ func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 	conn.SetReadLimit(1024)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+	if !h.liveHub.activate(id, updates, cancel) {
+		return
+	}
 	closed := conn.CloseRead(ctx)
 	defer func() {
-		if h.liveHub.leave(id, user.ID, updates) {
+		if h.liveHub.leave(id, updates) {
 			h.pauseIfHost(id, user.ID)
 		}
 	}()
@@ -154,6 +71,8 @@ func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 	for {
 		select {
 		case <-closed.Done():
+			return
+		case <-evict:
 			return
 		case <-updates:
 			writeCtx, stop := context.WithTimeout(closed, 5*time.Second)
@@ -178,6 +97,88 @@ func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 			}
 		}
 	}
+}
+
+// 在房间共享锁内读取最新成员身份并预占名额，提交后才升级连接。
+func (h *Handler) admitLive(c *gin.Context, id, user int64) (chan struct{}, chan struct{}, bool) {
+	ctx := c.Request.Context()
+	// 成员读取与名额预占共用房间共享锁；换主持不能夹在两者之间。
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		fail(c, err)
+		return nil, nil, false
+	}
+	rollback := func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = tx.Rollback(releaseCtx)
+	}
+	defer rollback()
+	var role string
+	var hostID *int64
+	var status string
+	err = tx.QueryRow(ctx, `SELECT host_id,status FROM rooms WHERE id=$1 FOR SHARE`, id).Scan(&hostID, &status)
+	if err == pgx.ErrNoRows {
+		rollback()
+		c.JSON(http.StatusForbidden, gin.H{"error": "你不在房间中"})
+		return nil, nil, false
+	}
+	if err != nil {
+		rollback()
+		fail(c, err)
+		return nil, nil, false
+	}
+	err = tx.QueryRow(ctx, `SELECT role FROM room_members WHERE room_id=$1 AND user_id=$2`, id, user).Scan(&role)
+	if err == pgx.ErrNoRows {
+		rollback()
+		c.JSON(http.StatusForbidden, gin.H{"error": "你不在房间中"})
+		return nil, nil, false
+	}
+	if err != nil {
+		rollback()
+		fail(c, err)
+		return nil, nil, false
+	}
+	if status == "closed" {
+		rollback()
+		c.JSON(http.StatusConflict, gin.H{"error": "房间已关闭"})
+		return nil, nil, false
+	}
+	currentHost := int64(0)
+	if hostID != nil {
+		currentHost = *hostID
+	}
+	h.liveHub.changeHost(id, currentHost)
+	kind := livePlayer
+	if currentHost == user {
+		kind = liveHost
+	} else if role == "spectator" {
+		kind = liveSpectator
+	}
+	// 升级前预留名额，超限时才能返回普通 HTTP 状态码。
+	updates, evict, limit := h.liveHub.join(id, user, kind)
+	if limit != liveAllowed {
+		rollback()
+		if limit == liveProcessLimit {
+			c.Header("Retry-After", "30")
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "实时服务繁忙，请稍后重试", "code": "LIVE_CAPACITY_EXHAUSTED"})
+			return nil, nil, false
+		}
+		c.Header("Retry-After", "15")
+		if limit == liveRoomLimit {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "房间实时连接已满，请稍后重试", "code": "ROOM_LIVE_FULL"})
+			return nil, nil, false
+		}
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "实时连接数过多，请关闭多余页面"})
+		return nil, nil, false
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.liveHub.leave(id, updates)
+		rollback()
+		fail(c, err)
+		return nil, nil, false
+	}
+	return updates, evict, true
 }
 
 // 主持人离线暂停对局；恢复时把竞答截止时间顺延离线时长。

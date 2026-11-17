@@ -215,7 +215,7 @@ func TestLiveSessionRevocationWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	first, firstClosed, firstTicks, firstHash := f.open()
 	_, secondClosed, secondTicks, secondHash := f.open()
-	f.waitQueries(6) // 每次连接：登录、成员检查、主持恢复检查各一次。
+	f.waitQueries(8) // 每次连接：登录、房间共享锁、成员检查、主持恢复检查各一次。
 	before := f.stats.count.Load()
 	queryTime := f.stats.nanos.Load()
 	poolBefore := f.app.Stat().TotalConns()
@@ -290,7 +290,7 @@ func TestLiveSessionRevocationWithPostgres(t *testing.T) {
 func TestLiveDisabledUserWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	_, closed, ticks, _ := f.open()
-	f.waitQueries(3)
+	f.waitQueries(4)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	if _, err := f.db.Exec(ctx, `UPDATE users SET disabled=TRUE WHERE id=$1`, f.host); err != nil {
 		t.Fatal(err)
@@ -306,7 +306,7 @@ func TestLiveDisabledUserWithPostgres(t *testing.T) {
 func TestLiveSessionQueryFailureWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	_, closed, ticks, _ := f.open()
-	f.waitQueries(3)
+	f.waitQueries(4)
 	f.store.fail.Store(true)
 	ticks <- time.Now()
 	waitSocketClosed(t, closed)
