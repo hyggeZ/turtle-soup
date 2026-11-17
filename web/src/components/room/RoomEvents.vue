@@ -46,7 +46,7 @@ function actionType(kind) {
 <template>
   <section class="play-paper play-record-card">
     <div class="play-card-heading"><div><span class="play-eyebrow">QUESTION LOG</span><h3>提问记录</h3></div><span class="play-count">{{ historyBefore > 0 ? '已加载 ' : '' }}{{ room.events.length }} 条线索</span></div>
-    <div v-if="room.status === 'finished' && (historyBefore > 0 || historyLoading || historyError)" class="play-record-history">
+    <div v-if="room.status !== 'waiting' && (historyBefore > 0 || historyLoading || historyError)" class="play-record-history">
       <button v-if="historyBefore > 0" class="play-ticket play-ticket-small play-ticket-plain" type="button"
         :disabled="historyLoading" @click="emit('older')">{{ historyLoading ? '正在加载…' : '加载更早记录' }}</button>
       <span v-if="historyError" role="alert">{{ historyError }}</span>

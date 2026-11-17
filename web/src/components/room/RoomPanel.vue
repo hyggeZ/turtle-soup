@@ -3,8 +3,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../../api'
 import { needsRefresh, offlinePollDelay, reconnectDelay, snapshotRetryDelay } from './retryTiming'
-import { mergeEvents, validHistoryBefore } from './eventHistory'
+import { mergeEvents, validHistoryBefore, validNewPage } from './eventHistory'
 import { roomSnapshotPath, validTaskPage } from './taskView'
+import { createSingleFlight, sameRoomView } from './snapshotFlow'
 import RoomEvents from './RoomEvents.vue'
 import RoomTasks from './RoomTasks.vue'
 import RoomMembers from './RoomMembers.vue'
@@ -42,13 +43,14 @@ let stableTimer
 let active = false
 let reconnectFailures = 0
 let loadFailures = 0
-let loadVersion = 0
+let viewEpoch = 0
 let eventCursor = 0
 let lastLoadedAt = 0
 let expiredChecked = ''
 let historyVersion = 0
 let historyController
 let taskTarget = null
+let snapshotController
 
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
 const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
@@ -79,72 +81,92 @@ function clearTaskView() {
   taskError.value = ''
 }
 
-async function load() {
+const snapshots = createSingleFlight(loadOnce)
+
+function load() { return snapshots.request() }
+
+function currentView(expected) {
+  return sameRoomView({ active, id: props.id, userId: props.user?.id, epoch: viewEpoch }, expected)
+}
+
+function discardRoomView() {
+  viewEpoch++
+  snapshotController?.abort()
+  snapshots.cancelQueued()
+  clearHistory()
+  clearTaskView()
+  room.value = null
+  eventCursor = 0
+}
+
+async function loadOnce() {
+  if (!active || !props.id) return
   const id = props.id
   const userId = props.user?.id
-  const version = ++loadVersion
-  const after = room.value?.id === id ? eventCursor : 0
+  const expected = { id, userId, epoch: viewEpoch }
+  const hasRoom = room.value?.id === id
+  const after = hasRoom ? eventCursor : 0
   const currentTaskCursor = taskTarget ?? taskCursor.value
+  const requestedTarget = taskTarget
+  const previousRole = hasRoom ? room.value.myRole : null
   const sentAt = Date.now()
   const controller = new AbortController()
+  snapshotController = controller
   const timeout = setTimeout(() => controller.abort(), 15000)
   try {
-    // 首次读取请求最近一页；进行中房间由服务端保持完整快照。
-    const path = roomSnapshotPath(id, after, currentTaskCursor)
+    // 首次读取最近一页；后续按原始事件游标逐页追赶。
+    const path = roomSnapshotPath(id, hasRoom, after, currentTaskCursor)
     const next = await request(path, { signal: controller.signal })
-    if (!active || props.id !== id || props.user?.id !== userId || version !== loadVersion) return
+    if (!currentView(expected)) return
     if (next.id !== id || !Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after ||
         Object.hasOwn(next, 'historyBefore') && !validHistoryBefore(next.historyBefore) ||
-        next.tasks !== undefined && !validTaskPage(next.tasks, currentTaskCursor)) {
-      throw new Error('房间事件数据无效，请重试')
+        next.tasks !== undefined && !validTaskPage(next.tasks, currentTaskCursor) ||
+        hasRoom && !validNewPage(next, after)) {
+      throw new Error('房间快照数据无效，请重试')
     }
-    if (after && next.myRole !== room.value.myRole) {
-      // 身份变化会改变可见历史，重新读取全量记录以清除旧权限内容。
-      clearHistory()
-      clearTaskView()
-      room.value = null
-      eventCursor = 0
+    if (hasRoom && next.myRole !== previousRole) {
+      // 身份变化会改变可见历史，按新身份重新读取最近一页。
+      discardRoomView()
       load()
       return
     }
-    if (!after || next.myRole !== room.value?.myRole || next.status !== 'finished') clearHistory()
-    if (!after || next.myRole !== room.value?.myRole || !['active', 'paused'].includes(next.status)) clearTaskView()
+    if (!hasRoom) clearHistory()
+    if (!hasRoom || !['active', 'paused'].includes(next.status)) clearTaskView()
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
     if (next.turnDeadline !== room.value?.turnDeadline) expiredChecked = ''
-    const events = after ? mergeEvents(room.value.events, next.events) : next.events
+    const events = hasRoom ? mergeEvents(room.value.events, next.events) : next.events
     room.value = { ...next, events }
     eventCursor = next.eventCursor
     if (next.tasks && next.myRole === 'host' && ['active', 'paused'].includes(next.status)) {
-      taskCursor.value = currentTaskCursor
-      taskTarget = null
-      taskLoading.value = false
-      taskError.value = ''
+      // 翻页途中返回的旧游标响应可更新房间，却不能提前结束待办翻页。
+      if (taskTarget === requestedTarget) {
+        taskCursor.value = currentTaskCursor
+        taskTarget = null
+        taskLoading.value = false
+        taskError.value = ''
+      }
     } else {
-      taskCursor.value = 0
-      taskTarget = null
-      taskLoading.value = false
+      clearTaskView()
     }
-    if (!after && next.status === 'finished') historyBefore.value = next.historyBefore || 0
+    if (!hasRoom) historyBefore.value = next.historyBefore || 0
     lastLoadedAt = performance.now()
     loadFailures = 0
     error.value = ''
     if (next.status === 'closed') closeSocket()
     else if (!socket && !reconnectTimer) connect()
     scheduleRefresh()
+    if (hasRoom && next.hasMoreNew) load()
   } catch (cause) {
-    if (!active || props.id !== id || props.user?.id !== userId || version !== loadVersion) return
+    if (!currentView(expected)) return
     lastLoadedAt = 0
     loadFailures += 1
     error.value = cause.name === 'AbortError' ? '房间更新超时，请稍后重试' : cause.message
     if ([401, 403, 404].includes(cause.status)) {
-      clearHistory()
-      clearTaskView()
-      room.value = null
-      eventCursor = 0
+      discardRoomView()
       closeSocket()
     }
-    if (taskTarget !== null && currentTaskCursor === taskTarget) {
+    if (taskTarget !== null && requestedTarget === taskTarget) {
       taskTarget = null
       taskLoading.value = false
       taskError.value = '待处理事项加载失败，请重试'
@@ -152,16 +174,18 @@ async function load() {
     scheduleRefresh()
   } finally {
     clearTimeout(timeout)
+    if (snapshotController === controller) snapshotController = null
   }
 }
 
 async function loadOlderHistory() {
   const current = room.value
   const before = historyBefore.value
-  if (!active || current?.status !== 'finished' || !before || historyLoading.value) return
+  if (!active || !current || current.status === 'waiting' || !before || historyLoading.value) return
   const id = current.id
   const role = current.myRole
   const userId = props.user?.id
+  const expected = { id, userId, epoch: viewEpoch }
   const version = ++historyVersion
   const controller = new AbortController()
   historyController = controller
@@ -169,14 +193,11 @@ async function loadOlderHistory() {
   historyError.value = ''
   const timeout = setTimeout(() => controller.abort(), 15000)
   try {
-    const next = await request(`/api/rooms/${id}?history=1&before=${before}`, { signal: controller.signal })
-    if (!active || props.id !== id || props.user?.id !== userId || version !== historyVersion || room.value?.status !== 'finished') return
-    if (next.myRole !== role || next.myRole !== room.value.myRole || next.status !== 'finished') {
-      // 身份或房间状态已变化，清除旧记录并重新读取最近一页。
-      clearHistory()
-      clearTaskView()
-      room.value = null
-      eventCursor = 0
+    const next = await request(`/api/rooms/${id}?history=2&before=${before}`, { signal: controller.signal })
+    if (!currentView(expected) || version !== historyVersion || room.value?.id !== id) return
+    if (next.myRole !== role || next.myRole !== room.value.myRole) {
+      // 身份已变化，清除旧权限下的事件并读取新的最近一页。
+      discardRoomView()
       load()
       return
     }
@@ -187,20 +208,14 @@ async function loadOlderHistory() {
     room.value = { ...room.value, events: mergeEvents(room.value.events, next.events) }
     historyBefore.value = next.historyBefore
   } catch (cause) {
-    if (!active || props.id !== id || props.user?.id !== userId || version !== historyVersion) return
+    if (!currentView(expected) || version !== historyVersion) return
     if (cause.status === 409) {
-      clearHistory()
-      clearTaskView()
-      room.value = null
-      eventCursor = 0
+      discardRoomView()
       load()
       return
     }
     if ([401, 403, 404].includes(cause.status)) {
-      clearHistory()
-      clearTaskView()
-      room.value = null
-      eventCursor = 0
+      discardRoomView()
       closeSocket()
       error.value = cause.message
       scheduleRefresh()
@@ -406,10 +421,7 @@ function connect() {
 
 function resetRoom() {
   closeSocket()
-  clearHistory()
-  clearTaskView()
-  room.value = null
-  eventCursor = 0
+  discardRoomView()
   lastLoadedAt = 0
   loadFailures = 0
   clockOffset.value = 0
@@ -437,8 +449,7 @@ onMounted(() => {
 onUnmounted(() => {
   active = false
   emit('hosting', false)
-  clearHistory()
-  clearTaskView()
+  discardRoomView()
   closeSocket()
   clearInterval(clockTimer)
 })

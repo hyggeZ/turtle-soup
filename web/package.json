@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "test": "node --test src/components/room/retryTiming.test.js src/components/room/eventHistory.test.js src/components/room/taskView.test.js"
+    "test": "node --test src/components/room/retryTiming.test.js src/components/room/eventHistory.test.js src/components/room/taskView.test.js src/components/room/snapshotFlow.test.js"
   },
   "dependencies": {
     "vue": "^3.5.0"

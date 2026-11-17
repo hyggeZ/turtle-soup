@@ -1,6 +1,6 @@
 // 待办页与事件历史各用自己的游标，查询时不要把两者混在一起。
-export function roomSnapshotPath(id, eventCursor, taskCursor) {
-  const events = eventCursor ? `after=${eventCursor}` : 'history=1'
+export function roomSnapshotPath(id, hasRoom, eventCursor, taskCursor) {
+  const events = hasRoom ? `history=2&after=${eventCursor}` : 'history=2'
   const tasks = taskCursor ? `&tasksAfter=${taskCursor}` : ''
   return `/api/rooms/${id}?${events}&tasks=1${tasks}`
 }

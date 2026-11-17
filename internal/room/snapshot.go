@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -12,11 +13,12 @@ import (
 // snapshot 只向成员展示其角色允许看到的事件内容。
 func (h *Handler) get(c *gin.Context) {
 	queryParams := c.Request.URL.Query()
-	history := queryParams.Has("history")
-	if history && (len(queryParams["history"]) != 1 || c.Query("history") != "1" || queryParams.Has("after")) {
-		c.JSON(400, gin.H{"error": "历史分页参数无效"})
+	eventRequest, err := parseRoomEventRequest(queryParams)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	historyVersion, before, after := eventRequest.version, eventRequest.before, eventRequest.after
 	tasksRequested := queryParams.Has("tasks")
 	if tasksRequested && (len(queryParams["tasks"]) != 1 || c.Query("tasks") != "1") {
 		c.JSON(400, gin.H{"error": "待办参数无效"})
@@ -32,28 +34,6 @@ func (h *Handler) get(c *gin.Context) {
 		tasksAfter, err = strconv.ParseInt(c.Query("tasksAfter"), 10, 64)
 		if err != nil || tasksAfter < 0 {
 			c.JSON(400, gin.H{"error": "待办游标无效"})
-			return
-		}
-	}
-	var before int64
-	if history && queryParams.Has("before") {
-		if len(queryParams["before"]) != 1 {
-			c.JSON(400, gin.H{"error": "历史分页游标无效"})
-			return
-		}
-		var err error
-		before, err = strconv.ParseInt(c.Query("before"), 10, 64)
-		if err != nil || before <= 0 {
-			c.JSON(400, gin.H{"error": "历史分页游标无效"})
-			return
-		}
-	}
-	var after int64
-	if raw := c.Query("after"); raw != "" {
-		var err error
-		after, err = strconv.ParseInt(raw, 10, 64)
-		if err != nil || after < 0 {
-			c.JSON(400, gin.H{"error": "事件游标无效"})
 			return
 		}
 	}
@@ -118,8 +98,8 @@ func (h *Handler) get(c *gin.Context) {
 			return
 		}
 	}
-	if before > 0 && status != "finished" {
-		c.JSON(409, gin.H{"error": "仅已结束房间支持历史翻页"})
+	if before > 0 && historyVersion == "1" && status != "finished" {
+		c.JSON(409, gin.H{"error": "当前房间不支持历史翻页"})
 		return
 	}
 	members := make([]gin.H, 0)
@@ -146,8 +126,12 @@ func (h *Handler) get(c *gin.Context) {
 	}
 	rows.Close()
 	events := make([]gin.H, 0)
-	pagedHistory := history && status == "finished"
+	pagedHistory := historyVersion == "1" && status == "finished" ||
+		historyVersion == "2" && !eventRequest.hasAfter
+	pagedDelta := historyVersion == "2" && eventRequest.hasAfter
+	pagedEvents := pagedHistory || pagedDelta
 	var historyBefore int64
+	var hasMoreNew bool
 	cursor := after
 	var rawEventIDs, parentQuestionIDs []int64
 	if pagedHistory {
@@ -156,70 +140,18 @@ func (h *Handler) get(c *gin.Context) {
 			fail(c, e)
 			return
 		}
+	} else if pagedDelta {
+		rawEventIDs, parentQuestionIDs, cursor, hasMoreNew, e = roomDeltaPage(ctx, tx, id, after)
+		if e != nil {
+			fail(c, e)
+			return
+		}
 	}
-	eventQuery := `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
-		EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer')
-		FROM room_events e`
-	eventArgs := []any{id}
-	if pagedHistory {
-		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id
-			WHERE e.room_id=$1 AND (e.id=ANY($2::bigint[]) OR (e.kind='question' AND e.id=ANY($3::bigint[]))) ORDER BY e.id`
-		eventArgs = append(eventArgs, rawEventIDs, parentQuestionIDs)
-	} else if after > 0 {
-		// 新回答会使旧的未回答问题首次公开，需要一并补发给其他玩家。
-		eventQuery += ` JOIN (
-			SELECT id FROM room_events WHERE room_id=$1 AND id>$2
-			UNION
-			SELECT parent_id FROM room_events
-			WHERE room_id=$1 AND id>$2 AND kind='answer' AND parent_id IS NOT NULL
-		) changed ON changed.id=e.id`
-		eventArgs = append(eventArgs, after)
-	}
-	if !pagedHistory {
-		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
-	}
-	ev, e := tx.Query(ctx, eventQuery, eventArgs...)
+	events, cursor, e = readRoomSnapshotEvents(ctx, tx, id, u.ID, role, pagedEvents, cursor, rawEventIDs, parentQuestionIDs)
 	if e != nil {
 		fail(c, e)
 		return
 	}
-	for ev.Next() {
-		var eid, uid int64
-		var kind, body, result string
-		var parent *int64
-		var subject *int64
-		var at time.Time
-		var answered bool
-		if ev.Scan(&eid, &uid, &kind, &body, &result, &parent, &at, &subject, &answered) != nil {
-			ev.Close()
-			fail(c, errors.New("scan"))
-			return
-		}
-		// 游标包含过滤掉的私有事件，后续刷新不必重复读取这些事件。
-		if !pagedHistory {
-			cursor = eid
-		}
-		if kind == "question" && !answered && uid != u.ID && role != "host" {
-			continue
-		}
-		if kind == "restore" && uid != u.ID && role != "host" {
-			// 私人还原在判定前不向其他玩家暴露提交者或提交时间。
-			continue
-		}
-		if kind == "answer_request" && uid != u.ID && role != "host" {
-			continue
-		}
-		if kind == "answer_result" && role != "host" && (subject == nil || *subject != u.ID) {
-			continue
-		}
-		events = append(events, gin.H{"id": eid, "userId": uid, "subjectUserId": subject, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
-	}
-	if e := ev.Err(); e != nil {
-		ev.Close()
-		fail(c, e)
-		return
-	}
-	ev.Close()
 	var pendingTasks roomPendingTasks
 	if tasksRequested {
 		pendingTasks, e = readRoomPendingTasks(ctx, tx, id, u.ID, role, status, tasksAfter)
@@ -236,8 +168,80 @@ func (h *Handler) get(c *gin.Context) {
 	if pagedHistory {
 		response["historyBefore"] = historyBefore
 	}
+	if pagedDelta {
+		response["hasMoreNew"] = hasMoreNew
+	}
 	if tasksRequested {
 		response["tasks"] = pendingTasks
 	}
 	c.JSON(200, response)
+}
+
+// 各种事件窗口共用原有的权限过滤；空的有界窗口无需查询事件明细。
+func readRoomSnapshotEvents(ctx context.Context, tx pgx.Tx, roomID, userID int64, role string, paged bool, cursor int64, rawEventIDs, parentQuestionIDs []int64) ([]gin.H, int64, error) {
+	events := make([]gin.H, 0)
+	if paged && len(rawEventIDs) == 0 {
+		return events, cursor, nil
+	}
+	eventQuery := `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
+		EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer')
+		FROM room_events e`
+	eventArgs := []any{roomID}
+	if paged {
+		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id
+			WHERE e.room_id=$1 AND (e.id=ANY($2::bigint[]) OR (e.kind='question' AND e.id=ANY($3::bigint[]))) ORDER BY e.id`
+		eventArgs = append(eventArgs, rawEventIDs, parentQuestionIDs)
+	} else if cursor > 0 {
+		// 新回答会使旧的未回答问题首次公开，需要一并补发给其他玩家。
+		eventQuery += ` JOIN (
+			SELECT id FROM room_events WHERE room_id=$1 AND id>$2
+			UNION
+			SELECT parent_id FROM room_events
+			WHERE room_id=$1 AND id>$2 AND kind='answer' AND parent_id IS NOT NULL
+		) changed ON changed.id=e.id`
+		eventArgs = append(eventArgs, cursor)
+	}
+	if !paged {
+		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
+	}
+	ev, err := tx.Query(ctx, eventQuery, eventArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	for ev.Next() {
+		var eid, uid int64
+		var kind, body, result string
+		var parent *int64
+		var subject *int64
+		var at time.Time
+		var answered bool
+		if err = ev.Scan(&eid, &uid, &kind, &body, &result, &parent, &at, &subject, &answered); err != nil {
+			ev.Close()
+			return nil, 0, err
+		}
+		// 游标包含过滤掉的私有事件，后续刷新不必重复读取这些事件。
+		if !paged {
+			cursor = eid
+		}
+		if kind == "question" && !answered && uid != userID && role != "host" {
+			continue
+		}
+		if kind == "restore" && uid != userID && role != "host" {
+			// 私人还原在判定前不向其他玩家暴露提交者或提交时间。
+			continue
+		}
+		if kind == "answer_request" && uid != userID && role != "host" {
+			continue
+		}
+		if kind == "answer_result" && role != "host" && (subject == nil || *subject != userID) {
+			continue
+		}
+		events = append(events, gin.H{"id": eid, "userId": uid, "subjectUserId": subject, "kind": kind, "body": body, "result": result, "parentId": parent, "createdAt": at})
+	}
+	if err = ev.Err(); err != nil {
+		ev.Close()
+		return nil, 0, err
+	}
+	ev.Close()
+	return events, cursor, nil
 }
