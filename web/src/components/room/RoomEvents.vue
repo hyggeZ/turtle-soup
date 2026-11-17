@@ -58,7 +58,7 @@ function actionType(kind) {
       <div class="play-record-body">
         <small>{{ names[event.subjectUserId || event.userId] || '成员' }} · {{ new Date(event.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}</small>
         <p>{{ label(event) }}</p>
-        <div v-if="room.myRole === 'host' && room.status === 'active' && !replied.has(event.id) && !staleRestore(event) && choices(event).length" class="play-verdict-actions">
+        <div v-if="!room.tasks && room.myRole === 'host' && room.status === 'active' && !replied.has(event.id) && !staleRestore(event) && choices(event).length" class="play-verdict-actions">
           <button v-for="(result, choiceIndex) in choices(event)" :key="result" class="play-ticket play-ticket-small" :class="choiceIndex === 0 ? 'play-ticket-cyan' : choiceIndex === 1 ? 'play-ticket-coral' : 'play-ticket-plain'" :disabled="busy" @click="emit('action', actionType(event.kind), { eventId: event.id, result })">{{ result }}</button>
         </div>
         <small v-if="room.myRole === 'host' && room.status === 'active' && staleRestore(event)">提交者已离席，本次还原失效</small>

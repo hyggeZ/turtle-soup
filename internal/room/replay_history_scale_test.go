@@ -44,25 +44,16 @@ func TestReplayHistoryScale(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := fmt.Sprintf("/api/rooms/%d", id)
-		cases := []historySample{
+		cases := []snapshotSample{
 			{name: "full", path: path, want: count},
 			{name: "latest", path: path + "?history=1", want: 100},
 			{name: "middle", path: fmt.Sprintf("%s?history=1&before=%d", path, before), want: 50},
 		}
-		for i := 0; i < 35; i++ {
-			for j := range cases {
-				cases[j].request(t, f, queries, viewer, i >= 5)
-			}
-		}
-		for _, sample := range cases {
-			sort.Float64s(sample.ms)
-			t.Logf("events=%d mode=%s bytes=%d dbq/op=%.1f p50=%.2fms p95=%.2fms", count, sample.name,
-				sample.bytes, float64(sample.dbq)/30, (sample.ms[14]+sample.ms[15])/2, sample.ms[28])
-		}
+		measureSnapshotSamples(t, f, queries, count, viewer, cases)
 	}
 }
 
-type historySample struct {
+type snapshotSample struct {
 	name  string
 	path  string
 	want  int
@@ -71,7 +62,21 @@ type historySample struct {
 	ms    []float64
 }
 
-func (s *historySample) request(t *testing.T, f *replayFixture, queries *queryCounter, viewer int, measure bool) {
+func measureSnapshotSamples(t *testing.T, f *replayFixture, queries *queryCounter, count, viewer int, cases []snapshotSample) {
+	t.Helper()
+	for i := 0; i < 35; i++ {
+		for j := range cases {
+			cases[j].request(t, f, queries, viewer, i >= 5)
+		}
+	}
+	for _, sample := range cases {
+		sort.Float64s(sample.ms)
+		t.Logf("events=%d mode=%s bytes=%d dbq/op=%.1f p50=%.2fms p95=%.2fms", count, sample.name,
+			sample.bytes, float64(sample.dbq)/30, (sample.ms[14]+sample.ms[15])/2, sample.ms[28])
+	}
+}
+
+func (s *snapshotSample) request(t *testing.T, f *replayFixture, queries *queryCounter, viewer int, measure bool) {
 	t.Helper()
 	queries.count.Store(0)
 	start := time.Now()

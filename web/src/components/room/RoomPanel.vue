@@ -4,7 +4,9 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../../api'
 import { needsRefresh, offlinePollDelay, reconnectDelay, snapshotRetryDelay } from './retryTiming'
 import { mergeEvents, validHistoryBefore } from './eventHistory'
+import { roomSnapshotPath, validTaskPage } from './taskView'
 import RoomEvents from './RoomEvents.vue'
+import RoomTasks from './RoomTasks.vue'
 import RoomMembers from './RoomMembers.vue'
 import RoomSettings from './RoomSettings.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
@@ -28,6 +30,9 @@ const clockOffset = ref(0)
 const historyBefore = ref(0)
 const historyLoading = ref(false)
 const historyError = ref('')
+const taskCursor = ref(0)
+const taskLoading = ref(false)
+const taskError = ref('')
 
 let socket
 let reconnectTimer
@@ -43,6 +48,7 @@ let lastLoadedAt = 0
 let expiredChecked = ''
 let historyVersion = 0
 let historyController
+let taskTarget = null
 
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
 const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
@@ -54,8 +60,8 @@ const remaining = computed(() => {
 })
 const myTurn = computed(() => room.value?.mode === 'casual' || (room.value?.turnUserId === props.user?.id && remaining.value > 0))
 const replied = computed(() => new Set((room.value?.events || []).filter(item => item.parentId).map(item => item.parentId)))
-const pendingRestore = computed(() => room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
-const pendingAnswer = computed(() => room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
+const pendingRestore = computed(() => room.value?.tasks?.pendingRestore ?? room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
+const pendingAnswer = computed(() => room.value?.tasks?.pendingAnswer ?? room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
 
 function clearHistory() {
   historyVersion++
@@ -66,38 +72,59 @@ function clearHistory() {
   historyError.value = ''
 }
 
+function clearTaskView() {
+  taskTarget = null
+  taskCursor.value = 0
+  taskLoading.value = false
+  taskError.value = ''
+}
+
 async function load() {
   const id = props.id
   const userId = props.user?.id
   const version = ++loadVersion
   const after = room.value?.id === id ? eventCursor : 0
+  const currentTaskCursor = taskTarget ?? taskCursor.value
   const sentAt = Date.now()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
   try {
     // 首次读取请求最近一页；进行中房间由服务端保持完整快照。
-    const path = `/api/rooms/${id}${after ? `?after=${after}` : '?history=1'}`
+    const path = roomSnapshotPath(id, after, currentTaskCursor)
     const next = await request(path, { signal: controller.signal })
     if (!active || props.id !== id || props.user?.id !== userId || version !== loadVersion) return
     if (next.id !== id || !Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after ||
-        Object.hasOwn(next, 'historyBefore') && !validHistoryBefore(next.historyBefore)) {
+        Object.hasOwn(next, 'historyBefore') && !validHistoryBefore(next.historyBefore) ||
+        next.tasks !== undefined && !validTaskPage(next.tasks, currentTaskCursor)) {
       throw new Error('房间事件数据无效，请重试')
     }
     if (after && next.myRole !== room.value.myRole) {
       // 身份变化会改变可见历史，重新读取全量记录以清除旧权限内容。
       clearHistory()
+      clearTaskView()
       room.value = null
       eventCursor = 0
       load()
       return
     }
     if (!after || next.myRole !== room.value?.myRole || next.status !== 'finished') clearHistory()
+    if (!after || next.myRole !== room.value?.myRole || !['active', 'paused'].includes(next.status)) clearTaskView()
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
     if (next.turnDeadline !== room.value?.turnDeadline) expiredChecked = ''
     const events = after ? mergeEvents(room.value.events, next.events) : next.events
     room.value = { ...next, events }
     eventCursor = next.eventCursor
+    if (next.tasks && next.myRole === 'host' && ['active', 'paused'].includes(next.status)) {
+      taskCursor.value = currentTaskCursor
+      taskTarget = null
+      taskLoading.value = false
+      taskError.value = ''
+    } else {
+      taskCursor.value = 0
+      taskTarget = null
+      taskLoading.value = false
+    }
     if (!after && next.status === 'finished') historyBefore.value = next.historyBefore || 0
     lastLoadedAt = performance.now()
     loadFailures = 0
@@ -112,9 +139,15 @@ async function load() {
     error.value = cause.name === 'AbortError' ? '房间更新超时，请稍后重试' : cause.message
     if ([401, 403, 404].includes(cause.status)) {
       clearHistory()
+      clearTaskView()
       room.value = null
       eventCursor = 0
       closeSocket()
+    }
+    if (taskTarget !== null && currentTaskCursor === taskTarget) {
+      taskTarget = null
+      taskLoading.value = false
+      taskError.value = '待处理事项加载失败，请重试'
     }
     scheduleRefresh()
   } finally {
@@ -141,6 +174,7 @@ async function loadOlderHistory() {
     if (next.myRole !== role || next.myRole !== room.value.myRole || next.status !== 'finished') {
       // 身份或房间状态已变化，清除旧记录并重新读取最近一页。
       clearHistory()
+      clearTaskView()
       room.value = null
       eventCursor = 0
       load()
@@ -156,6 +190,7 @@ async function loadOlderHistory() {
     if (!active || props.id !== id || props.user?.id !== userId || version !== historyVersion) return
     if (cause.status === 409) {
       clearHistory()
+      clearTaskView()
       room.value = null
       eventCursor = 0
       load()
@@ -163,6 +198,7 @@ async function loadOlderHistory() {
     }
     if ([401, 403, 404].includes(cause.status)) {
       clearHistory()
+      clearTaskView()
       room.value = null
       eventCursor = 0
       closeSocket()
@@ -178,6 +214,17 @@ async function loadOlderHistory() {
       historyLoading.value = false
     }
   }
+}
+
+function showTaskPage(after) {
+  const current = room.value
+  if (!active || current?.myRole !== 'host' || !current.tasks ||
+      !['active', 'paused'].includes(current.status) || taskLoading.value ||
+      !Number.isSafeInteger(after) || after < 0 || after === taskCursor.value) return
+  taskTarget = after
+  taskLoading.value = true
+  taskError.value = ''
+  load()
 }
 
 function actionKey(roomId, userId) {
@@ -360,6 +407,7 @@ function connect() {
 function resetRoom() {
   closeSocket()
   clearHistory()
+  clearTaskView()
   room.value = null
   eventCursor = 0
   lastLoadedAt = 0
@@ -390,6 +438,7 @@ onUnmounted(() => {
   active = false
   emit('hosting', false)
   clearHistory()
+  clearTaskView()
   closeSocket()
   clearInterval(clockTimer)
 })
@@ -476,6 +525,9 @@ watch(() => ['active', 'paused'].includes(room.value?.status) && room.value?.myR
               <span>当前提问：{{ names[room.turnUserId] || '无' }}</span>
               <small>{{ myTurn ? '轮到你提问' : '等待提问回合' }}</small>
             </div>
+            <RoomTasks v-if="room.myRole === 'host' && room.tasks && ['active', 'paused'].includes(room.status)"
+              :room="room" :tasks="room.tasks" :cursor="taskCursor" :loading="taskLoading" :error="taskError" :busy="locked"
+              @next="showTaskPage(room.tasks.nextAfter)" @reset="showTaskPage(0)" @action="act" />
             <RoomEvents v-if="room.status !== 'waiting'" :room="room" :busy="locked"
               :history-before="historyBefore" :history-loading="historyLoading" :history-error="historyError"
               @older="loadOlderHistory" @action="act" />

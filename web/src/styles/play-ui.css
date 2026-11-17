@@ -344,6 +344,11 @@
 .play-settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .play-room-settings .play-picker-list { max-height: 220px; }
 .play-record-card .play-card-heading h3 { font-size: 19px; }
+.play-task-card { padding: 20px 23px; }
+.play-task-card .play-card-heading h3 { font-size: 19px; }
+.play-task-note { margin: 13px 0 0; color: #805d57; font-size: 12px; }
+.play-task-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 14px; }
+.play-task-pager > span { color: #a5454b; font-size: 12px; }
 .play-record-history { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 13px 0 4px; }
 .play-record-history > span { color: #a5454b; font-size: 12px; }
 .play-record-row { display: flex; align-items: center; gap: 10px; min-height: 78px; border-bottom: 1px dashed #b87f74; padding: 11px 0; }

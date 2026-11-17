@@ -17,6 +17,24 @@ func (h *Handler) get(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "历史分页参数无效"})
 		return
 	}
+	tasksRequested := queryParams.Has("tasks")
+	if tasksRequested && (len(queryParams["tasks"]) != 1 || c.Query("tasks") != "1") {
+		c.JSON(400, gin.H{"error": "待办参数无效"})
+		return
+	}
+	var tasksAfter int64
+	if tasksRequested && queryParams.Has("tasksAfter") {
+		if len(queryParams["tasksAfter"]) != 1 {
+			c.JSON(400, gin.H{"error": "待办游标无效"})
+			return
+		}
+		var err error
+		tasksAfter, err = strconv.ParseInt(c.Query("tasksAfter"), 10, 64)
+		if err != nil || tasksAfter < 0 {
+			c.JSON(400, gin.H{"error": "待办游标无效"})
+			return
+		}
+	}
 	var before int64
 	if history && queryParams.Has("before") {
 		if len(queryParams["before"]) != 1 {
@@ -202,6 +220,14 @@ func (h *Handler) get(c *gin.Context) {
 		return
 	}
 	ev.Close()
+	var pendingTasks roomPendingTasks
+	if tasksRequested {
+		pendingTasks, e = readRoomPendingTasks(ctx, tx, id, u.ID, role, status, tasksAfter)
+		if e != nil {
+			fail(c, e)
+			return
+		}
+	}
 	if e := tx.Commit(ctx); e != nil {
 		fail(c, e)
 		return
@@ -209,6 +235,9 @@ func (h *Handler) get(c *gin.Context) {
 	response := gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor}
 	if pagedHistory {
 		response["historyBefore"] = historyBefore
+	}
+	if tasksRequested {
+		response["tasks"] = pendingTasks
 	}
 	c.JSON(200, response)
 }
