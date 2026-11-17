@@ -3,6 +3,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../../api'
 import { needsRefresh, offlinePollDelay, reconnectDelay, snapshotRetryDelay } from './retryTiming'
+import { mergeEvents, validHistoryBefore } from './eventHistory'
 import RoomEvents from './RoomEvents.vue'
 import RoomMembers from './RoomMembers.vue'
 import RoomSettings from './RoomSettings.vue'
@@ -24,6 +25,9 @@ const confirmOpen = ref(false)
 const confirmAction = ref('')
 const now = ref(Date.now())
 const clockOffset = ref(0)
+const historyBefore = ref(0)
+const historyLoading = ref(false)
+const historyError = ref('')
 
 let socket
 let reconnectTimer
@@ -37,6 +41,8 @@ let loadVersion = 0
 let eventCursor = 0
 let lastLoadedAt = 0
 let expiredChecked = ''
+let historyVersion = 0
+let historyController
 
 const names = computed(() => Object.fromEntries((room.value?.members || []).map(item => [item.id, item.username])))
 const playerCount = computed(() => (room.value?.members || []).filter(item => item.role === 'player').length)
@@ -51,40 +57,48 @@ const replied = computed(() => new Set((room.value?.events || []).filter(item =>
 const pendingRestore = computed(() => room.value?.events.some(item => item.kind === 'restore' && item.userId === props.user?.id && !replied.value.has(item.id)))
 const pendingAnswer = computed(() => room.value?.events.some(item => item.kind === 'answer_request' && item.userId === props.user?.id && !replied.value.has(item.id)))
 
-// 新回答可能让旧问题首次公开，补发事件需要按 ID 插回原位置。
-function mergeEvents(previous, incoming) {
-  const byId = new Map(previous.map(event => [event.id, event]))
-  for (const event of incoming) byId.set(event.id, event)
-  return [...byId.values()].sort((a, b) => a.id - b.id)
+function clearHistory() {
+  historyVersion++
+  historyController?.abort()
+  historyController = null
+  historyBefore.value = 0
+  historyLoading.value = false
+  historyError.value = ''
 }
 
 async function load() {
   const id = props.id
+  const userId = props.user?.id
   const version = ++loadVersion
   const after = room.value?.id === id ? eventCursor : 0
   const sentAt = Date.now()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
   try {
-    const path = `/api/rooms/${id}${after ? `?after=${after}` : ''}`
+    // 首次读取请求最近一页；进行中房间由服务端保持完整快照。
+    const path = `/api/rooms/${id}${after ? `?after=${after}` : '?history=1'}`
     const next = await request(path, { signal: controller.signal })
-    if (!active || props.id !== id || version !== loadVersion) return
-    if (!Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after) {
+    if (!active || props.id !== id || props.user?.id !== userId || version !== loadVersion) return
+    if (next.id !== id || !Array.isArray(next.events) || !Number.isSafeInteger(next.eventCursor) || next.eventCursor < after ||
+        Object.hasOwn(next, 'historyBefore') && !validHistoryBefore(next.historyBefore)) {
       throw new Error('房间事件数据无效，请重试')
     }
     if (after && next.myRole !== room.value.myRole) {
       // 身份变化会改变可见历史，重新读取全量记录以清除旧权限内容。
+      clearHistory()
       room.value = null
       eventCursor = 0
       load()
       return
     }
+    if (!after || next.myRole !== room.value?.myRole || next.status !== 'finished') clearHistory()
     const serverTime = Date.parse(next.serverTime)
     if (Number.isFinite(serverTime)) clockOffset.value = serverTime - (sentAt + Date.now()) / 2
     if (next.turnDeadline !== room.value?.turnDeadline) expiredChecked = ''
     const events = after ? mergeEvents(room.value.events, next.events) : next.events
     room.value = { ...next, events }
     eventCursor = next.eventCursor
+    if (!after && next.status === 'finished') historyBefore.value = next.historyBefore || 0
     lastLoadedAt = performance.now()
     loadFailures = 0
     error.value = ''
@@ -92,11 +106,12 @@ async function load() {
     else if (!socket && !reconnectTimer) connect()
     scheduleRefresh()
   } catch (cause) {
-    if (!active || props.id !== id || version !== loadVersion) return
+    if (!active || props.id !== id || props.user?.id !== userId || version !== loadVersion) return
     lastLoadedAt = 0
     loadFailures += 1
     error.value = cause.name === 'AbortError' ? '房间更新超时，请稍后重试' : cause.message
     if ([401, 403, 404].includes(cause.status)) {
+      clearHistory()
       room.value = null
       eventCursor = 0
       closeSocket()
@@ -104,6 +119,64 @@ async function load() {
     scheduleRefresh()
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+async function loadOlderHistory() {
+  const current = room.value
+  const before = historyBefore.value
+  if (!active || current?.status !== 'finished' || !before || historyLoading.value) return
+  const id = current.id
+  const role = current.myRole
+  const userId = props.user?.id
+  const version = ++historyVersion
+  const controller = new AbortController()
+  historyController = controller
+  historyLoading.value = true
+  historyError.value = ''
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const next = await request(`/api/rooms/${id}?history=1&before=${before}`, { signal: controller.signal })
+    if (!active || props.id !== id || props.user?.id !== userId || version !== historyVersion || room.value?.status !== 'finished') return
+    if (next.myRole !== role || next.myRole !== room.value.myRole || next.status !== 'finished') {
+      // 身份或房间状态已变化，清除旧记录并重新读取最近一页。
+      clearHistory()
+      room.value = null
+      eventCursor = 0
+      load()
+      return
+    }
+    if (next.id !== id || !Array.isArray(next.events) || !validHistoryBefore(next.historyBefore, before)) {
+      throw new Error('较早记录数据无效，请重试')
+    }
+    // 历史响应可能晚于实时更新，只取事件和旧页游标，不覆盖新房间状态。
+    room.value = { ...room.value, events: mergeEvents(room.value.events, next.events) }
+    historyBefore.value = next.historyBefore
+  } catch (cause) {
+    if (!active || props.id !== id || props.user?.id !== userId || version !== historyVersion) return
+    if (cause.status === 409) {
+      clearHistory()
+      room.value = null
+      eventCursor = 0
+      load()
+      return
+    }
+    if ([401, 403, 404].includes(cause.status)) {
+      clearHistory()
+      room.value = null
+      eventCursor = 0
+      closeSocket()
+      error.value = cause.message
+      scheduleRefresh()
+      return
+    }
+    historyError.value = cause.name === 'AbortError' ? '加载较早记录超时，请重试' : cause.message || '加载较早记录失败'
+  } finally {
+    clearTimeout(timeout)
+    if (version === historyVersion) {
+      historyController = null
+      historyLoading.value = false
+    }
   }
 }
 
@@ -286,6 +359,7 @@ function connect() {
 
 function resetRoom() {
   closeSocket()
+  clearHistory()
   room.value = null
   eventCursor = 0
   lastLoadedAt = 0
@@ -315,6 +389,7 @@ onMounted(() => {
 onUnmounted(() => {
   active = false
   emit('hosting', false)
+  clearHistory()
   closeSocket()
   clearInterval(clockTimer)
 })
@@ -401,7 +476,9 @@ watch(() => ['active', 'paused'].includes(room.value?.status) && room.value?.myR
               <span>当前提问：{{ names[room.turnUserId] || '无' }}</span>
               <small>{{ myTurn ? '轮到你提问' : '等待提问回合' }}</small>
             </div>
-            <RoomEvents v-if="room.status !== 'waiting'" :room="room" :busy="locked" @action="act" />
+            <RoomEvents v-if="room.status !== 'waiting'" :room="room" :busy="locked"
+              :history-before="historyBefore" :history-loading="historyLoading" :history-error="historyError"
+              @older="loadOlderHistory" @action="act" />
           </div>
         </div>
 

@@ -2,8 +2,14 @@
 // 对局记录由服务端按身份过滤；这里仅展示当前用户可看的内容。
 import { computed } from 'vue'
 
-const props = defineProps({ room: { type: Object, required: true }, busy: { type: Boolean, default: false } })
-const emit = defineEmits(['action'])
+const props = defineProps({
+  room: { type: Object, required: true },
+  busy: { type: Boolean, default: false },
+  historyBefore: { type: Number, default: 0 },
+  historyLoading: { type: Boolean, default: false },
+  historyError: { type: String, default: '' },
+})
+const emit = defineEmits(['action', 'older'])
 
 const names = computed(() => Object.fromEntries(props.room.members.map(item => [item.id, item.username])))
 const replied = computed(() => new Set(props.room.events.filter(item => item.parentId).map(item => item.parentId)))
@@ -39,8 +45,13 @@ function actionType(kind) {
 
 <template>
   <section class="play-paper play-record-card">
-    <div class="play-card-heading"><div><span class="play-eyebrow">QUESTION LOG</span><h3>提问记录</h3></div><span class="play-count">{{ room.events.length }} 条线索</span></div>
-    <p v-if="!room.events.length" class="play-empty">还没有对局记录。</p>
+    <div class="play-card-heading"><div><span class="play-eyebrow">QUESTION LOG</span><h3>提问记录</h3></div><span class="play-count">{{ historyBefore > 0 ? '已加载 ' : '' }}{{ room.events.length }} 条线索</span></div>
+    <div v-if="room.status === 'finished' && (historyBefore > 0 || historyLoading || historyError)" class="play-record-history">
+      <button v-if="historyBefore > 0" class="play-ticket play-ticket-small play-ticket-plain" type="button"
+        :disabled="historyLoading" @click="emit('older')">{{ historyLoading ? '正在加载…' : '加载更早记录' }}</button>
+      <span v-if="historyError" role="alert">{{ historyError }}</span>
+    </div>
+    <p v-if="!room.events.length" class="play-empty">{{ historyBefore > 0 ? '这段记录暂无可见内容，可继续查看更早记录。' : '暂无可见对局记录。' }}</p>
     <article v-for="(event, index) in room.events" :key="event.id" class="play-record-row">
       <span class="play-row-number">{{ String(index + 1).padStart(2, '0') }}</span>
       <span class="play-record-avatar" :class="`play-avatar-${event.kind}`">{{ (names[event.subjectUserId || event.userId] || '成员').slice(0, 1) }}</span>

@@ -11,6 +11,25 @@ import (
 
 // snapshot 只向成员展示其角色允许看到的事件内容。
 func (h *Handler) get(c *gin.Context) {
+	queryParams := c.Request.URL.Query()
+	history := queryParams.Has("history")
+	if history && (len(queryParams["history"]) != 1 || c.Query("history") != "1" || queryParams.Has("after")) {
+		c.JSON(400, gin.H{"error": "历史分页参数无效"})
+		return
+	}
+	var before int64
+	if history && queryParams.Has("before") {
+		if len(queryParams["before"]) != 1 {
+			c.JSON(400, gin.H{"error": "历史分页游标无效"})
+			return
+		}
+		var err error
+		before, err = strconv.ParseInt(c.Query("before"), 10, 64)
+		if err != nil || before <= 0 {
+			c.JSON(400, gin.H{"error": "历史分页游标无效"})
+			return
+		}
+	}
 	var after int64
 	if raw := c.Query("after"); raw != "" {
 		var err error
@@ -81,6 +100,10 @@ func (h *Handler) get(c *gin.Context) {
 			return
 		}
 	}
+	if before > 0 && status != "finished" {
+		c.JSON(409, gin.H{"error": "仅已结束房间支持历史翻页"})
+		return
+	}
 	members := make([]gin.H, 0)
 	rows, e := tx.Query(ctx, `SELECT m.user_id,u.username,m.role,m.correct,m.host_request FROM room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=$1 ORDER BY m.joined_at,m.user_id`, id)
 	if e != nil {
@@ -105,11 +128,26 @@ func (h *Handler) get(c *gin.Context) {
 	}
 	rows.Close()
 	events := make([]gin.H, 0)
+	pagedHistory := history && status == "finished"
+	var historyBefore int64
+	cursor := after
+	var rawEventIDs, parentQuestionIDs []int64
+	if pagedHistory {
+		rawEventIDs, parentQuestionIDs, historyBefore, cursor, e = roomHistoryPage(ctx, tx, id, before)
+		if e != nil {
+			fail(c, e)
+			return
+		}
+	}
 	eventQuery := `SELECT e.id,e.user_id,e.kind,e.body,e.result,e.parent_id,e.created_at,p.user_id,
 		EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id AND reply.kind='answer')
 		FROM room_events e`
 	eventArgs := []any{id}
-	if after > 0 {
+	if pagedHistory {
+		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id
+			WHERE e.room_id=$1 AND (e.id=ANY($2::bigint[]) OR (e.kind='question' AND e.id=ANY($3::bigint[]))) ORDER BY e.id`
+		eventArgs = append(eventArgs, rawEventIDs, parentQuestionIDs)
+	} else if after > 0 {
 		// 新回答会使旧的未回答问题首次公开，需要一并补发给其他玩家。
 		eventQuery += ` JOIN (
 			SELECT id FROM room_events WHERE room_id=$1 AND id>$2
@@ -119,13 +157,14 @@ func (h *Handler) get(c *gin.Context) {
 		) changed ON changed.id=e.id`
 		eventArgs = append(eventArgs, after)
 	}
-	eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
+	if !pagedHistory {
+		eventQuery += ` LEFT JOIN room_events p ON p.id=e.parent_id WHERE e.room_id=$1 ORDER BY e.id`
+	}
 	ev, e := tx.Query(ctx, eventQuery, eventArgs...)
 	if e != nil {
 		fail(c, e)
 		return
 	}
-	cursor := after
 	for ev.Next() {
 		var eid, uid int64
 		var kind, body, result string
@@ -139,7 +178,9 @@ func (h *Handler) get(c *gin.Context) {
 			return
 		}
 		// 游标包含过滤掉的私有事件，后续刷新不必重复读取这些事件。
-		cursor = eid
+		if !pagedHistory {
+			cursor = eid
+		}
 		if kind == "question" && !answered && uid != u.ID && role != "host" {
 			continue
 		}
@@ -165,5 +206,9 @@ func (h *Handler) get(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	c.JSON(200, gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor})
+	response := gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor}
+	if pagedHistory {
+		response["historyBefore"] = historyBefore
+	}
+	c.JSON(200, response)
 }
