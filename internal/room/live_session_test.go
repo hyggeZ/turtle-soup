@@ -26,10 +26,16 @@ import (
 
 type heartbeatTimeKey struct{}
 
+type liveQuerySample struct {
+	start  time.Time
+	resume bool
+}
+
 // 只统计业务连接的 SQL；建表、造数据和断言使用另一连接池。
 type heartbeatQueries struct {
-	count atomic.Int64
-	nanos atomic.Int64
+	count   atomic.Int64
+	nanos   atomic.Int64
+	resumed chan struct{}
 }
 
 type testSessionStore struct {
@@ -44,14 +50,24 @@ func (s *testSessionStore) FindSessionUser(ctx context.Context, hash []byte) (ac
 	return s.Store.FindSessionUser(ctx, hash)
 }
 
-func (q *heartbeatQueries) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
-	return context.WithValue(ctx, heartbeatTimeKey{}, time.Now())
+func (q *heartbeatQueries) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	return context.WithValue(ctx, heartbeatTimeKey{}, liveQuerySample{
+		start:  time.Now(),
+		resume: strings.HasPrefix(data.SQL, "UPDATE rooms SET status='active',turn_deadline="),
+	})
 }
 
 func (q *heartbeatQueries) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryEndData) {
+	sample, ok := ctx.Value(heartbeatTimeKey{}).(liveQuerySample)
+	if ok {
+		q.nanos.Add(time.Since(sample.start).Nanoseconds())
+	}
 	q.count.Add(1)
-	if start, ok := ctx.Value(heartbeatTimeKey{}).(time.Time); ok {
-		q.nanos.Add(time.Since(start).Nanoseconds())
+	if sample.resume {
+		select {
+		case q.resumed <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -104,7 +120,7 @@ func newLiveSessionTest(t *testing.T) *liveSessionTest {
 	if err := migrations.Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	stats := &heartbeatQueries{}
+	stats := &heartbeatQueries{resumed: make(chan struct{}, 16)}
 	config.ConnConfig.Tracer = stats
 	app, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -191,6 +207,20 @@ func (f *liveSessionTest) waitQueries(want int64) {
 	}
 }
 
+// 握手应答可能先于主持恢复检查完成。等待恢复检查，避免把连接初始化计入心跳。
+func (f *liveSessionTest) waitResumes(count int) {
+	f.t.Helper()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	for i := 0; i < count; i++ {
+		select {
+		case <-f.stats.resumed:
+		case <-timer.C:
+			f.t.Fatalf("仅完成 %d/%d 次主持恢复检查", i, count)
+		}
+	}
+}
+
 func (f *liveSessionTest) status() string {
 	f.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -215,7 +245,7 @@ func TestLiveSessionRevocationWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	first, firstClosed, firstTicks, firstHash := f.open()
 	_, secondClosed, secondTicks, secondHash := f.open()
-	f.waitQueries(8) // 每次连接：登录、房间共享锁、成员检查、主持恢复检查各一次。
+	f.waitResumes(2)
 	before := f.stats.count.Load()
 	queryTime := f.stats.nanos.Load()
 	poolBefore := f.app.Stat().TotalConns()
@@ -290,7 +320,7 @@ func TestLiveSessionRevocationWithPostgres(t *testing.T) {
 func TestLiveDisabledUserWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	_, closed, ticks, _ := f.open()
-	f.waitQueries(4)
+	f.waitResumes(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	if _, err := f.db.Exec(ctx, `UPDATE users SET disabled=TRUE WHERE id=$1`, f.host); err != nil {
 		t.Fatal(err)
@@ -306,7 +336,7 @@ func TestLiveDisabledUserWithPostgres(t *testing.T) {
 func TestLiveSessionQueryFailureWithPostgres(t *testing.T) {
 	f := newLiveSessionTest(t)
 	_, closed, ticks, _ := f.open()
-	f.waitQueries(4)
+	f.waitResumes(1)
 	f.store.fail.Store(true)
 	ticks <- time.Now()
 	waitSocketClosed(t, closed)
