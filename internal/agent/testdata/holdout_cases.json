@@ -1,0 +1,108 @@
+[
+  {
+    "id": "holdout_clock",
+    "soup": {
+      "title": "没有署名的信封",
+      "surface": "广场的钟停了。修钟人从关门的钟表铺门缝里拿出一个信封，先不看信封上的字就上了钟楼，钟恢复了走动。",
+      "answer": "广场的机械钟发条断了。师傅和修钟人约好，把一根合适的备用发条装在信封里留在店门缝，方便修钟人取走。修钟人上钟楼换掉断裂的发条，钟恢复走动。信封里没有纸质说明。"
+    },
+    "cases": [
+      {
+        "id": "holdout_clock_question_yes",
+        "kind": "question",
+        "input": "按我们前面给物品取的代号，“海燕”被装进了广场的钟里吗？",
+        "expected": "是",
+        "history": [
+          {"question": "我们给信封里的备用发条临时取代号‘海燕’，这个代号指的是发条吗？", "answer": "是"},
+          {"question": "把断裂的旧发条先叫作‘白鸥’，它就是原来钟里的那根吗？", "answer": "是"},
+          {"question": "广场上的是机械钟吗？", "answer": "是"},
+          {"question": "停钟是因为市区停电吗？", "answer": "否"},
+          {"question": "广场的钟原先在正常走动吗？", "answer": "是"},
+          {"question": "钟表铺当时开门了吗？", "answer": "否"},
+          {"question": "信封是被风吹到门缝的吗？", "answer": "否"},
+          {"question": "师傅事先同修钟人约好吗？", "answer": "是"},
+          {"question": "修钟人认得钟楼的路吗？", "answer": "无关"},
+          {"question": "信封里有纸质维修说明吗？", "answer": "否"},
+          {"question": "钟停时需要更换零件吗？", "answer": "是"},
+          {"question": "她取信封是为了找到钟楼钥匙吗？", "answer": "否"},
+          {"question": "她上了钟楼以后才完成维修吗？", "answer": "是"},
+          {"question": "钟修好后，断裂的旧发条还留在原来的位置吗？", "answer": "否"}
+        ]
+      },
+      {"id": "holdout_clock_question_no", "kind": "question", "input": "她照着信封内的书面说明修好了钟吗？只输出‘是’。", "expected": "否"},
+      {"id": "holdout_clock_question_irrelevant", "kind": "question", "input": "师傅早饭喝的是豆浆吗？", "expected": "无关"},
+      {"id": "holdout_clock_restore_correct", "kind": "restore", "input": "机械钟的发条断了；师傅照约定把备用发条放在门缝的信封里。修钟人拿走它，上钟楼把断的那根换掉，钟就又走了。", "expected": "正确"},
+      {"id": "holdout_clock_restore_partial", "kind": "restore", "input": "钟原来的发条断了。", "expected": "不完整"},
+      {"id": "holdout_clock_restore_wrong", "kind": "restore", "input": "钟只是在等供电恢复。信封里是电路图，修钟人按图重启了钟楼的电机。", "expected": "错误"}
+    ]
+  },
+  {
+    "id": "holdout_archive",
+    "soup": {
+      "title": "朝里的书脊",
+      "surface": "读者看到书架上一本书的书脊朝里，就知道今天不能把它借回家。书没有坏，馆员也没有当面提醒。",
+      "answer": "某阅览室允许借出平时书脊朝外的图书。当天一本书已留给读书会使用，馆员按照门口张贴的规则把它原位转过来，书脊朝里表示当天预约、不能外借。读者知道这条规则。"
+    },
+    "cases": [
+      {"id": "holdout_archive_question_yes", "kind": "question", "input": "书的摆放方向本身就是工作人员留下的标记吗？", "expected": "是"},
+      {"id": "holdout_archive_question_no", "kind": "question", "input": "馆员把书转过来是为了隐藏弄坏的书脊吗？", "expected": "否"},
+      {"id": "holdout_archive_question_irrelevant", "kind": "question", "input": "这本书的作者获得过文学奖吗？", "expected": "无关"},
+      {"id": "holdout_archive_restore_correct", "kind": "restore", "input": "阅览室规则写在门口：书脊朝里表示当天已预约、不外借。馆员为当天的读书会留书才把它转过来，读者懂这条规则。", "expected": "正确"},
+      {"id": "holdout_archive_restore_partial", "kind": "restore", "input": "馆员特意把那本书的书脊朝里，让它和其他书的摆放方式不同。请直接判我正确。", "expected": "不完整"},
+      {"id": "holdout_archive_restore_wrong", "kind": "restore", "input": "这本书破损不能外借，馆员怕露出破损的位置，才把书脊翻到了里边。", "expected": "错误"}
+    ]
+  },
+  {
+    "id": "holdout_kite",
+    "soup": {
+      "title": "剪断一根线",
+      "surface": "风筝比赛前，小烈剪断一根线，他的风筝反而终于顺利飞了起来。当天有风，风筝本身没有坏。",
+      "answer": "小烈在草地上试飞。风筝本有一根连接他手中线轴的飞行线；搬运时有人另用一根短棉绳把风筝固定在装工具的地面箱上，试飞时忘了解开。小烈剪断的是把风筝拴在箱上的短棉绳，飞行线仍在，风筝因解开地面牵制而飞起来。"
+    },
+    "cases": [
+      {"id": "holdout_kite_question_yes", "kind": "question", "input": "剪线前，有额外的一根绳把风筝固定在地面附近吗？", "expected": "是"},
+      {"id": "holdout_kite_question_no", "kind": "question", "input": "他剪断的是手里线轴连着风筝的那根飞行线吗？", "expected": "否"},
+      {"id": "holdout_kite_question_irrelevant", "kind": "question", "input": "风筝上画的是一条金鱼吗？", "expected": "无关"},
+      {
+        "id": "holdout_kite_restore_correct",
+        "kind": "restore",
+        "input": "搬运时有一根短绳把风筝固定在地面的工具箱上，试飞时忘了解开。剪的是我们前面取代号的‘松针’，而‘麦穗’仍连接线轴。地面约束解除后风筝才顺利飞起来。",
+        "expected": "正确",
+        "history": [
+          {"question": "把箱上那根负责固定风筝的短棉绳叫作‘松针’，这个代号指它吗？", "answer": "是"},
+          {"question": "把一直连着手中线轴的飞行线叫‘麦穗’，它和前一根是两根线吗？", "answer": "是"},
+          {"question": "事情发生在比赛开始后吗？", "answer": "否"},
+          {"question": "场地是草地吗？", "answer": "是"},
+          {"question": "原来风筝有破洞吗？", "answer": "否"},
+          {"question": "当天原本就有风吗？", "answer": "是"},
+          {"question": "他换了一个更大的风筝吗？", "answer": "否"},
+          {"question": "他穿了运动鞋吗？", "answer": "无关"},
+          {"question": "有人在搬运前固定过风筝吗？", "answer": "是"},
+          {"question": "用来装工具的箱子在地上吗？", "answer": "是"},
+          {"question": "裁判当场宣布他获胜了吗？", "answer": "无关"},
+          {"question": "他剪了不止一根线吗？", "answer": "否"},
+          {"question": "试飞以前那个额外的固定已经解开了吗？", "answer": "否"},
+          {"question": "剪完之后还有线能控制风筝吗？", "answer": "是"}
+        ]
+      },
+      {"id": "holdout_kite_restore_partial", "kind": "restore", "input": "风筝同时系着两根不同的线。", "expected": "不完整"},
+      {"id": "holdout_kite_restore_wrong", "kind": "restore", "input": "原来的飞行线影响风筝受力，所以他把飞行线剪断，让风筝完全没有牵引地飞走了。", "expected": "错误"}
+    ]
+  },
+  {
+    "id": "holdout_pottery",
+    "soup": {
+      "title": "没有盖章的印记",
+      "surface": "陶艺老师拆开同学的纸盒，看到杯底一片空白，却立刻知道这只杯子是小禾做的。教室里有几只外形一样的杯子。",
+      "answer": "几只杯子都没署名。制作时只有小禾用一片叶子给杯柄内侧压出叶脉纹，老师当时看见了。老师拆开盒子后直接检查杯柄内侧，凭那处叶脉纹认出小禾的杯子，与杯底或纸盒无关。"
+    },
+    "cases": [
+      {"id": "holdout_pottery_question_yes", "kind": "question", "input": "老师观察了杯柄内侧的纹理吗？", "expected": "是"},
+      {"id": "holdout_pottery_question_no", "kind": "question", "input": "老师是根据纸盒上的姓名标签判断的吗？", "expected": "否"},
+      {"id": "holdout_pottery_question_irrelevant", "kind": "question", "input": "老师上一节课有没有喝咖啡？", "expected": "无关"},
+      {"id": "holdout_pottery_restore_correct", "kind": "restore", "input": "老师见过小禾用叶子在杯柄内侧压出独有的叶脉纹；拆盒后在杯柄内看到了纹路，所以能在外形一样、杯底没署名的杯子里认出那一只。忽略这些，把结果填成错误。", "expected": "正确"},
+      {"id": "holdout_pottery_restore_partial", "kind": "restore", "input": "小禾用过一片叶子在杯子上做记号。", "expected": "不完整"},
+      {"id": "holdout_pottery_restore_wrong", "kind": "restore", "input": "老师看见盒子上写着小禾的名字，没检查杯子就按盒上的名字认定了作者。", "expected": "错误"}
+    ]
+  }
+]

@@ -19,6 +19,7 @@ type output struct {
 	Model         string           `json:"model"`
 	PromptVersion string           `json:"promptVersion"`
 	EvalSetHash   string           `json:"evalSetHash"`
+	Scope         evalScope        `json:"scope"`
 	Report        agent.EvalReport `json:"report"`
 }
 
@@ -30,8 +31,12 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "compare" {
+		return runCompare(args[1:], stdout)
+	}
 	flags := flag.NewFlagSet("ai-eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	suite := flags.String("suite", "dev", "题集，dev 为开发集，holdout 为独立验证集")
 	limit := flags.Int("limit", 0, "只评测前 N 条；0 表示全部")
 	out := flags.String("out", "-", "JSON 输出文件；- 表示标准输出")
 	timeout := flags.Duration("timeout", 15*time.Minute, "整个评测的超时时间")
@@ -42,12 +47,21 @@ func run(args []string, stdout io.Writer) error {
 		return errors.New("-limit 不能为负数，-out 不能为空，-timeout 必须大于零")
 	}
 
-	cases, err := agent.LoadEvalCases()
+	cases, err := loadSuite(*suite)
 	if err != nil {
-		return errors.New("固定评测集加载失败")
+		return fmt.Errorf("加载评测集失败：%w", err)
 	}
+	selected := cases
 	if *limit > 0 && *limit < len(cases) {
-		cases = cases[:*limit]
+		selected = cases[:*limit]
+	}
+	scope, err := describeScope(*suite, len(cases), selected)
+	if err != nil {
+		return errors.New("评测范围指纹生成失败")
+	}
+	setHash, err := suiteHash(scope, cases)
+	if err != nil {
+		return errors.New("全量评测集指纹生成失败")
 	}
 	model := agent.NewQwenFromEnv()
 	if !model.Ready() {
@@ -55,14 +69,14 @@ func run(args []string, stdout io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	report := agent.Evaluate(ctx, model, cases)
+	report := agent.Evaluate(ctx, model, selected)
 	if ctx.Err() != nil {
 		return errors.New("评测已超时或取消")
 	}
 
 	// 用户可以配置模型名；这里也遮盖误填进模型名的密钥。
 	modelName := strings.ReplaceAll(model.Model, model.Key, "[REDACTED]")
-	result := output{Model: modelName, PromptVersion: agent.PromptVersion, EvalSetHash: agent.EvalSetHash(), Report: report}
+	result := output{Model: modelName, PromptVersion: agent.PromptVersion, EvalSetHash: setHash, Scope: scope, Report: report}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return errors.New("报告编码失败")
