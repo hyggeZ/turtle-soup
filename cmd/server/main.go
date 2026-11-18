@@ -24,6 +24,8 @@ import (
 	"turtle-soup/migrations"
 )
 
+const startupMigrationTimeout = 10 * time.Second
+
 func main() {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
@@ -55,7 +57,7 @@ func main() {
 	if err := db.Ping(ctx); err != nil {
 		log.Fatal("连接 PostgreSQL 失败: ", err)
 	}
-	if err := migrations.Apply(context.Background(), db); err != nil {
+	if err := applyStartupMigrations(context.Background(), db, startupMigrationTimeout); err != nil {
 		log.Fatal("初始化数据表失败: ", err)
 	}
 	recoverCtx, stopRecover := context.WithTimeout(context.Background(), 5*time.Second)
@@ -113,6 +115,13 @@ func main() {
 		log.Fatal(err)
 	}
 	<-shutdownDone
+}
+
+// 初始化必须在启动预算内完成，避免迁移锁一直卡住服务。
+func applyStartupMigrations(parent context.Context, db *pgxpool.Pool, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	return migrations.Apply(ctx, db)
 }
 
 func listenAddress() string {
