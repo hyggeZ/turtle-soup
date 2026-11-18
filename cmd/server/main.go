@@ -67,6 +67,14 @@ func main() {
 	}
 	stopRecover()
 
+	metrics, metricsServer, err := startMetrics(os.Getenv("METRICS_ADDR"))
+	if err != nil {
+		log.Fatal("初始化监控端口失败: ", err)
+	}
+	if metricsServer != nil {
+		defer metricsServer.Close()
+		monitor.SetMetrics(metrics)
+	}
 	router := newRouter(monitor)
 	// 默认只信任 TCP 对端地址；部署在反向代理后时显式列出代理 IP 或 CIDR。
 	if raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); raw != "" {

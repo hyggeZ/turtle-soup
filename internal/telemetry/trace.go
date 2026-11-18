@@ -55,6 +55,7 @@ type Store struct {
 	file       *os.File
 	records    []Record
 	writeError string
+	metrics    *Metrics
 }
 
 func NewStore(dir string) (*Store, error) {
@@ -99,6 +100,9 @@ func (s *Store) Close() error {
 	return s.file.Close()
 }
 
+// SetMetrics 在注册路由前设置可选的聚合指标。
+func (s *Store) SetMetrics(metrics *Metrics) { s.metrics = metrics }
+
 func newID() string {
 	data := make([]byte, 16)
 	if _, err := rand.Read(data); err != nil {
@@ -118,13 +122,33 @@ func (s *Store) Middleware() gin.HandlerFunc {
 		trace.mu.Lock()
 		trace.record.Route = c.FullPath()
 		trace.record.Status = c.Writer.Status()
-		trace.record.DurationMS = ms(time.Since(started))
+		elapsed := time.Since(started)
+		trace.record.DurationMS = ms(elapsed)
 		record := trace.record
 		trace.mu.Unlock()
 		if record.Route == "" {
 			record.Route = "unmatched"
 		}
+		s.observeRequest(record, elapsed)
 		s.append(record)
+	}
+}
+
+// 复用请求和 AI 判定的现有计时，指标标签不取自请求内容。
+func (s *Store) observeRequest(record Record, elapsed time.Duration) {
+	if s.metrics == nil || record.Method != "POST" {
+		return
+	}
+	switch record.Route {
+	case "/api/rooms/join":
+		s.metrics.ObserveRoomJoin(record.Status, elapsed)
+	case "/api/ai/solo/:id/actions":
+		for _, span := range record.Spans {
+			if span.Name == "ai.decision" {
+				s.metrics.ObserveDecision(span.Failed, time.Duration(span.DurationMS*float64(time.Millisecond)))
+				return
+			}
+		}
 	}
 }
 
