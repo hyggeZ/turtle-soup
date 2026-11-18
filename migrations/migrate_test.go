@@ -45,15 +45,15 @@ func TestApplyFromEmptySchema(t *testing.T) {
 			t.Fatalf("第 %d 次初始化失败: %v", i+1, err)
 		}
 	}
-	var users, rooms, games, waitingIndex, answerIndex string
+	var users, rooms, games, waitingIndex, answerIndex, replyIndex string
 	err = db.QueryRow(ctx, `SELECT to_regclass('users'),to_regclass('rooms'),to_regclass('ai_games'),
-		to_regclass('rooms_soup_waiting_idx'),to_regclass('room_events_answer_parent_idx')`).
-		Scan(&users, &rooms, &games, &waitingIndex, &answerIndex)
-	if err != nil || users == "" || rooms == "" || games == "" || waitingIndex == "" || answerIndex == "" {
-		t.Fatalf("核心表或索引不完整: users=%q rooms=%q ai_games=%q waiting=%q answer=%q err=%v", users, rooms, games, waitingIndex, answerIndex, err)
+		to_regclass('rooms_soup_waiting_idx'),to_regclass('room_events_answer_parent_idx'),to_regclass('room_events_reply_parent_idx')`).
+		Scan(&users, &rooms, &games, &waitingIndex, &answerIndex, &replyIndex)
+	if err != nil || users == "" || rooms == "" || games == "" || waitingIndex == "" || answerIndex == "" || replyIndex == "" {
+		t.Fatalf("核心表或索引不完整: users=%q rooms=%q ai_games=%q waiting=%q answer=%q reply=%q err=%v", users, rooms, games, waitingIndex, answerIndex, replyIndex, err)
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 16 {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 17 {
 		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
 	}
 }
@@ -137,10 +137,11 @@ func TestApplyFromVersionEight(t *testing.T) {
 		}
 	}
 	var count int
-	var table, answerIndex string
+	var table, answerIndex, replyIndex string
 	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage'),
-		to_regclass('room_events_answer_parent_idx') FROM schema_migrations`).Scan(&count, &table, &answerIndex); err != nil || count != 16 || table == "" || answerIndex == "" {
-		t.Fatalf("升级结果错误：版本数=%d，新表=%q，回答索引=%q，错误=%v", count, table, answerIndex, err)
+		to_regclass('room_events_answer_parent_idx'),to_regclass('room_events_reply_parent_idx') FROM schema_migrations`).
+		Scan(&count, &table, &answerIndex, &replyIndex); err != nil || count != 17 || table == "" || answerIndex == "" || replyIndex == "" {
+		t.Fatalf("升级结果错误：版本数=%d，新表=%q，回答索引=%q，回复索引=%q，错误=%v", count, table, answerIndex, replyIndex, err)
 	}
 	var events int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM room_events WHERE room_id=$1`, room).Scan(&events); err != nil || events != 2 {

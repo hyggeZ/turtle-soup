@@ -46,12 +46,13 @@ func readRoomPendingTasks(ctx context.Context, tx pgx.Tx, roomID, userID int64, 
 
 	// 主持可处理旧玩家的问题和看底申请；还原则仅当前玩家可被判定。
 	// 任意子事件都终结主持待办，与 eventReady、readyPlayerRestore 保持一致。
+	// 各房间事件量差距较大，按当前房间和游标规划查询，避免通用计划扫描过多事件。
 	rows, err := tx.Query(ctx, `SELECT e.id,e.user_id,e.kind,e.body,e.created_at
 		FROM room_events e LEFT JOIN room_members m ON m.room_id=e.room_id AND m.user_id=e.user_id
 		WHERE e.room_id=$1 AND e.id>$2
 		AND (e.kind IN ('question','answer_request') OR (e.kind='restore' AND m.role='player'))
 		AND NOT EXISTS(SELECT 1 FROM room_events reply WHERE reply.parent_id=e.id)
-		ORDER BY e.id LIMIT 51`, roomID, after)
+		ORDER BY e.id LIMIT 51`, pgx.QueryExecModeExec, roomID, after)
 	if err != nil {
 		return tasks, err
 	}
