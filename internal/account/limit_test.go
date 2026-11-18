@@ -42,6 +42,7 @@ func TestRequestLimiter(t *testing.T) {
 
 func TestRequestLimiterConcurrentAndBounded(t *testing.T) {
 	limiter := newRequestLimiter()
+	limiter.now = func() time.Time { return time.Unix(0, 0) }
 	var group sync.WaitGroup
 	results := make(chan bool, 100)
 	for i := 0; i < 100; i++ {
@@ -64,12 +65,9 @@ func TestRequestLimiterConcurrentAndBounded(t *testing.T) {
 	}
 	for i := 0; i < maxLimitEntries; i++ {
 		key := string(rune(i + 0x1000))
-		if !limiter.allow(limitRule{key: key, max: 1, window: time.Hour}) && len(limiter.entries) < maxLimitEntries {
-			t.Fatal("内存上限前意外拒绝")
+		if allowed := limiter.register(key); allowed != (i < maxLimitEntries-2) {
+			t.Fatalf("注册第 %d 个不同键时，容量判断错误：%v", i+1, allowed)
 		}
-	}
-	if len(limiter.entries) > maxLimitEntries || limiter.allow(limitRule{key: "new-key", max: 1, window: time.Hour}) {
-		t.Fatal("内存记录数未限制")
 	}
 }
 
