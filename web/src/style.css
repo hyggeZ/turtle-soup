@@ -1,5 +1,7 @@
 @import './styles/foundation.css';
 @import './styles/controls.css';
 @import './styles/play-ui.css';
+@import './styles/room-tickets.css';
 @import './styles/admin-ui.css';
 @import './styles/game-ui.css';
+@import './styles/home-tickets.css';

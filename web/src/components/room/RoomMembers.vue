@@ -8,15 +8,18 @@ function roleName(role) {
 </script>
 
 <template>
-  <section class="play-paper play-member-card">
+  <section class="play-paper play-member-card room-skin room-skin-rust">
     <div class="play-card-heading">
-      <div><span class="play-eyebrow">PLAYERS</span><h3>房间成员</h3></div>
+      <h3>房间成员</h3>
       <strong>{{ playerCount }} / {{ room.maxPlayers }} <small>玩家</small></strong>
     </div>
     <div class="play-member-list">
       <div v-for="member in room.members" :key="member.id" class="play-member">
-        <span class="play-avatar" :class="`play-avatar-${member.role}`">{{ member.username.slice(0, 1) }}</span>
-        <span><b>{{ member.username }}</b><small>{{ roleName(member.role) }}{{ member.correct ? ' · 已答对' : '' }}</small></span>
+        <span class="play-avatar" :class="`play-avatar-${member.role}`" :data-portrait="(member.id - 1) % 4 + 1" aria-hidden="true">{{ member.username.slice(0, 1) }}</span>
+        <span class="room-member-label room-skin">
+          <b :title="member.username">{{ member.username }}</b>
+          <small>{{ member.id === room.ownerId ? '房主 · ' : '' }}{{ roleName(member.role) }}{{ member.correct ? ' · 已答对' : '' }}</small>
+        </span>
       </div>
     </div>
   </section>

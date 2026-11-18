@@ -109,36 +109,6 @@
 .game-ui .game-field input::placeholder, .game-ui .game-field textarea::placeholder { color: #a6877f; }
 .game-ui .game-field-help { color: #80645f; font-size: 12px; font-weight: 500; line-height: 1.5; }
 
-/* 首页没有顶栏和侧栏，场景里的票券就是入口。 */
-.game-home { min-height: 100vh; overflow: hidden; background: linear-gradient(90deg, rgba(13,16,31,.55), rgba(15,17,31,.2) 55%, rgba(21,15,29,.05)), url('/assets/home-city.png') center / cover no-repeat, var(--g-night); color: var(--g-paper-light); }
-.game-home-inner { position: relative; width: min(100%, 1520px); min-height: 900px; margin: auto; padding: 42px 62px; }
-.game-home-inner::after { content: ''; pointer-events: none; position: absolute; inset: 0; background: repeating-linear-gradient(108deg, transparent 0 74px, rgba(130,206,221,.045) 75px, transparent 77px); }
-.game-brand, .game-home-account, .game-home-content { position: relative; z-index: 1; }
-.game-brand { display: flex; align-items: center; gap: 23px; }
-.game-brand strong { color: #ffe8c7; font-family: 'STKaiti','KaiTi',serif; font-size: 51px; letter-spacing: .08em; text-shadow: 4px 5px 0 #3a2034, -1px -1px 0 #543544; }
-.game-brand i { display: block; width: 164px; height: 6px; margin-top: 2px; transform: rotate(-5deg); background: var(--g-coral); }
-.game-home-account { position: absolute; top: 44px; right: 52px; display: flex; gap: 10px; }
-.game-ui .game-admin-ticket { background: linear-gradient(145deg, #ddba9a, #b98b75); font-size: 13px; }
-.game-home-content { width: min(720px, 65%); margin: 77px 0 0 50px; }
-.game-home-content h1 { margin: 0 0 24px; color: #ffecd1; font-size: 25px; line-height: 1.4; letter-spacing: .12em; text-shadow: 2px 3px 0 #311d31; }
-.game-route-stack { display: grid; gap: 15px; }
-.game-ui .game-route { position: relative; display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 145px; padding: 21px 28px; border: 0; clip-path: polygon(0 13px, 13px 0, calc(100% - 15px) 0, 100% 15px, 100% calc(100% - 13px), calc(100% - 13px) 100%, 15px 100%, 0 calc(100% - 15px)); box-shadow: inset 0 0 0 2px #4b2c3b, inset 0 0 0 5px rgba(255,247,226,.7); color: #422c38; text-align: left; transition: translate .16s ease, filter .16s ease; }
-.game-ui .game-route::before { content: ''; position: absolute; inset: 7px; pointer-events: none; border: 1px dashed rgba(78,45,51,.38); clip-path: inherit; }
-.game-ui .game-route:hover { translate: 0 -4px; filter: brightness(1.04); }
-.game-ui .game-route:active { translate: 0 1px; }
-.game-route--room { background: linear-gradient(108deg, #d5736c, #ffe3bf 34%, #f8dcb8); transform: rotate(-1.1deg); }
-.game-route--solo { width: calc(100% - 35px) !important; margin-left: 35px; background: linear-gradient(108deg, #a9cdd0, #fff0d7 34%, #f6dfc2); transform: rotate(.7deg); }
-.game-route--community { width: calc(100% - 12px) !important; margin-left: 12px; background: linear-gradient(108deg, #f2b59e, #fff0d7 35%, #f6dcc1); transform: rotate(-.4deg); }
-.game-route-symbol { display: grid; place-items: center; width: 78px; height: 78px; border: 2px solid #5e3441; border-radius: 50%; background: rgba(74,40,54,.12); color: #683647; font-family: 'STKaiti','KaiTi',serif; font-size: 39px; box-shadow: 3px 4px 0 rgba(77,44,51,.19); }
-.game-route--solo .game-route-symbol { color: #1b6774; }
-.game-route-copy { display: flex; flex-direction: column; align-items: flex-start; }
-.game-route-copy small { color: rgba(95,55,60,.65); font-size: 13px; font-weight: 900; }
-.game-route-copy strong { color: #422c38; font-family: 'STKaiti','KaiTi',serif; font-size: 33px; letter-spacing: .1em; line-height: 1.1; }
-.game-route-copy > span { margin-top: 10px; color: #795b5b; font-size: 15px; font-weight: 600; }
-.game-route-enter { align-self: end; min-width: 113px; padding: 10px 12px; clip-path: polygon(0 10px, 10px 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 10px 100%, 0 calc(100% - 10px)); background: var(--g-coral-dark); color: #ffefda; font-size: 17px; font-weight: 900; text-align: center; }
-.game-route--solo .game-route-enter { background: var(--g-teal-dark); }
-.game-ui .game-home-write { margin: 25px 0 0 20px; min-width: 170px; justify-content: center; font-size: 16px; }
-
 /* 内页只用返回按钮；标题下划线呼应首页。 */
 .game-community, .game-detail, .game-editor, .game-profile { min-height: 100vh; padding: 34px 32px 70px; background: radial-gradient(circle at 83% 0, rgba(166,68,70,.24), transparent 33%), radial-gradient(circle at 3% 70%, rgba(38,127,145,.22), transparent 37%), repeating-linear-gradient(120deg, rgba(170,187,201,.028) 0 2px, transparent 3px 22px), var(--g-night); }
 .game-width { width: min(1190px,100%); margin: auto; }
@@ -259,24 +229,6 @@
 .game-profile-modal-actions .game-stamp { flex: 1; min-width: 0; white-space: nowrap; }
 
 @media (max-width: 800px) {
-  .game-home, .game-home-inner { min-height: 100vh; }
-  .game-home { background-position: 58% center; }
-  .game-home-inner { padding: 28px 18px 38px; background: linear-gradient(90deg, rgba(16,19,35,.71), rgba(16,19,35,.28)); }
-  .game-brand { gap: 16px; }
-  .game-brand strong { font-size: 38px; }
-  .game-brand i { width: 118px; }
-  .game-home-account { top: 29px; right: 16px; }
-  .game-home-account .game-ticket { padding: 10px 12px; font-size: 12px; }
-  .game-home-account .game-admin-ticket { display: none; }
-  .game-home-content { width: min(560px,100%); margin: 78px auto 0; }
-  .game-home-content h1 { font-size: 20px; }
-  .game-ui .game-route { min-height: 132px; grid-template-columns: 60px 1fr; padding: 17px 18px; }
-  .game-route-symbol { width: 58px; height: 58px; font-size: 29px; }
-  .game-route-copy strong { font-size: 26px; }
-  .game-route-copy > span { margin-top: 4px; font-size: 12px; }
-  .game-route-enter { grid-column: 2; justify-self: start; align-self: auto; min-width: 96px; padding: 6px 11px; font-size: 13px; }
-  .game-route--solo, .game-route--community { width: 100% !important; margin-left: 0; }
-  .game-ui .game-home-write { margin: 23px 0 0; }
   .game-community, .game-detail, .game-editor, .game-profile { padding: 19px 15px 45px; }
   .game-ui .game-title { margin-top: 22px; font-size: 35px; }
   .game-case-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -289,25 +241,6 @@
 }
 
 @media (max-width: 520px) {
-  .game-home { background-position: 65% center; }
-  .game-home-inner { padding: 25px 14px 35px; }
-  .game-brand .game-turtle-mark { width: 32px; height: 21px; border-width: 3px; }
-  .game-brand .game-turtle-mark::before, .game-brand .game-turtle-mark::after { width: 11px; height: 10px; border-width: 3px; top: 3px; left: -10px; }
-  .game-brand .game-turtle-mark::after { left: auto; right: -10px; }
-  .game-brand strong { font-size: 31px; }
-  .game-brand i { width: 100px; height: 4px; }
-  .game-home-account .game-ticket { padding: 8px 10px; font-size: 11px; }
-  .game-home-account--admin { position: relative; top: auto; right: auto; justify-content: flex-end; flex-wrap: wrap; margin-top: 12px; }
-  .game-home-account--admin .game-admin-ticket { display: inline-flex; }
-  .game-home-account--admin + .game-home-content { margin-top: 28px; }
-  .game-home-content { margin-top: 88px; }
-  .game-home-content h1 { margin-bottom: 18px; font-size: 16px; }
-  .game-route-stack { gap: 12px; }
-  .game-ui .game-route { min-height: 124px; gap: 8px; padding: 13px 16px; }
-  .game-route-copy strong { font-size: 23px; }
-  .game-route-copy small, .game-route-copy > span { font-size: 11px; }
-  .game-route-enter { min-width: 81px; font-size: 12px; }
-  .game-ui .game-home-write { font-size: 12px; min-width: 105px; }
   .game-case-grid { grid-template-columns: minmax(0,1fr); }
   .game-case-card { min-width: 0; min-height: 270px; }
   .game-case-foot { flex-wrap: wrap; }

@@ -1,0 +1,244 @@
+/* 房间票券的四角由插画提供，九宫格切片让框随内容伸缩。 */
+.room-page {
+  --room-paper: url('/assets/ticket-paper.webp');
+  --room-rust: url('/assets/ticket-rust.webp');
+  --room-teal: url('/assets/ticket-teal.webp');
+  --room-claret: url('/assets/ticket-claret.webp');
+  --room-serif: 'Noto Serif SC', 'STSong', 'SimSun', serif;
+}
+
+.room-page::before {
+  background: linear-gradient(90deg, #1b13249c, #25162375 55%, #3017244d),
+    linear-gradient(0deg, #170e2078, transparent 72%);
+}
+.room-page::after { opacity: .04; }
+
+.room-page .play-scene-content {
+  padding: 24px clamp(18px, 3.65vw, 58px) 44px;
+}
+
+.room-page .room-skin {
+  --room-skin: var(--room-paper);
+  --room-fill: #f8daba;
+  --room-edge: 20px;
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  clip-path: none;
+  background: transparent;
+  box-shadow: none;
+  color: #4b2430;
+}
+
+.room-page .room-skin::before,
+.room-page .room-skin::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.room-page .room-skin::before {
+  inset: min(11px, calc(var(--room-edge) * .6));
+  border-radius: min(14px, var(--room-edge));
+  background: var(--room-fill);
+}
+
+.room-page .room-skin::after {
+  inset: 0;
+  opacity: 1;
+  border: 0 solid transparent;
+  border-image: var(--room-skin) 10% 8% fill / var(--room-edge) stretch;
+  background: none;
+  filter: drop-shadow(0 3px 2px #170b17b0);
+}
+
+.room-page .room-skin-rust { --room-skin: var(--room-rust); --room-fill: #74303e; }
+.room-page .room-skin-teal { --room-skin: var(--room-teal); --room-fill: #1e4e5c; }
+.room-page .room-skin-claret { --room-skin: var(--room-claret); --room-fill: #722d39; }
+.room-page .room-skin-rust,
+.room-page .room-skin-teal,
+.room-page .room-skin-claret { color: #fff1dd; }
+
+.room-page button.room-skin:hover:not(:disabled) { background: transparent; filter: brightness(1.09); }
+.room-page button.room-skin:focus-visible, .room-record-scroll:focus-visible {
+  outline: 3px solid #73d5d7;
+  outline-offset: 3px;
+}
+
+/* 房号和状态靠近页面标题摆放，手机空间不足时自然换行。 */
+.room-page .play-page-heading { gap: clamp(12px, 2.1vw, 31px); min-height: 78px; flex-wrap: wrap; margin-bottom: 20px; }
+.room-page .play-back { --room-edge: 14px; min-width: 108px; height: 50px; font: 800 18px/1 var(--room-serif); }
+.room-page .play-back span { margin-right: 5px; }
+.room-page .play-page-title { padding-left: 5px; }
+.room-page .play-page-title h1 { font-family: var(--room-serif); }
+.room-page .play-room-ribbon { gap: 7px; min-height: 0; width: auto; margin: 0; border: 0; padding: 0; background: none; box-shadow: none; clip-path: none; }
+.room-page .play-room-ribbon > span { --room-edge: 12px; flex: 0 0 auto; align-items: center; border: 0; min-height: 46px; padding: 5px 12px; }
+.room-page .play-room-ribbon strong { font: 850 18px/1.15 var(--room-serif); }
+.room-page .play-room-ribbon small { color: #6b3b43; }
+.room-page .play-room-ribbon .play-link, .room-page .play-connection { font-size: 11px; }
+.room-page .play-connection { margin-left: auto; border: 0; padding: 4px 0; background: none; color: #b7ece6; text-shadow: 0 1px 4px #130e1c; }
+.room-page .play-connection.offline { color: #ffe0ab; }
+
+/* 成员和汤面叠在左边，记录单独在右边展开。 */
+.room-page .play-room-grid { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: clamp(15px, 2vw, 31px); }
+.room-page .play-room-left, .room-page .play-room-right { gap: 20px; }
+.room-page .play-paper { padding: clamp(18px, 2.05vw, 30px); }
+.room-page .play-card-heading { gap: 9px; border-bottom: 1px dashed #95404c75; padding-bottom: 10px; }
+.room-page .play-card-heading h3, .room-page .play-case-copy h2, .room-page .play-answer-card h3 { font-family: var(--room-serif); }
+.room-page .play-count { border-color: #984d5686; color: #743d4b; background: #c3825515; }
+.room-page .play-case-card { min-height: 240px; padding-top: 21px; }
+.room-page .play-case-head { margin: -10px 0 12px; }
+.room-page .play-case-tab {
+  --room-edge: 13px;
+  justify-content: center;
+  min-width: 124px;
+  min-height: 42px;
+  margin-left: -12px;
+  padding: 7px 20px;
+  font: 850 24px/1.1 var(--room-serif);
+  transform: rotate(-3deg);
+}
+.room-page .play-case-content { grid-template-columns: minmax(0, .78fr) minmax(0, 1fr); align-items: start; gap: clamp(13px, 2vw, 28px); }
+.room-page .play-case-image { margin: 11px 0 0; padding: 5px 5px 11px; background: #f3c997; }
+.room-page .play-case-image::before { border-radius: 4px; transform: rotate(-19deg); top: -6px; left: 14%; width: 11px; height: 20px; border-color: #674038; }
+.room-page .play-case-image img { aspect-ratio: 1.35; }
+.room-page .play-case-copy h2 { font-size: clamp(20px, 2.4vw, 32px); }
+.room-page .play-case-copy p { white-space: pre-wrap; }
+.room-page .play-answer-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.room-page .play-member-card { padding-top: 16px; }
+.room-page .play-member-card .play-card-heading { align-items: center; border-bottom-color: #ffdbb45c; }
+.room-page .play-member-card .play-card-heading :is(h3, strong, small) { margin: 0; color: #ffe8ca; }
+.room-page .play-member-card .play-card-heading strong { font: 800 17px/1.1 var(--room-serif); }
+.room-page .play-member-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.room-page .play-member { flex-direction: column; align-items: center; text-align: center; }
+.room-page .play-member .play-avatar {
+  width: clamp(46px, 5vw, 79px);
+  height: auto;
+  aspect-ratio: 1;
+  border: 2px solid #ffe0af;
+  box-shadow: inset 0 0 0 3px #170f1f63, 0 2px 0 #3d2131;
+  color: #fff0d5;
+  font: 900 clamp(20px, 2.3vw, 34px)/1 var(--room-serif);
+  background-color: #403748;
+  background-image: radial-gradient(ellipse at 35% 18%, #e7af7b62, transparent 64%),
+    repeating-linear-gradient(140deg, transparent 0 4px, #ffffff0a 5px 6px);
+}
+.room-page .play-member .play-avatar-host { background-color: #67293d; }
+.room-page .play-member .play-avatar-player { background-color: #224752; }
+.room-page .room-member-label { --room-edge: 10px; width: 100%; min-height: 37px; padding: 5px 8px; }
+.room-page .room-member-label b { font-size: 13px; line-height: 1.25; }
+.room-page .room-member-label small { color: #653c44; overflow-wrap: anywhere; }
+
+/* 记录的标题贴签、头像和判定尽量接近画稿，长记录可在纸内滚动。 */
+.room-page .play-record-card { margin-top: 10px; min-height: 224px; }
+.room-page .play-record-card .play-card-heading { align-items: center; padding-bottom: 8px; }
+.room-page .play-record-card .room-record-title {
+  --room-edge: 13px;
+  z-index: 1;
+  align-self: center;
+  margin: -20px 0 0 -9px;
+  min-height: 47px;
+  padding: 8px 17px;
+  font-size: clamp(20px, 2.25vw, 32px);
+  transform: rotate(-2deg);
+}
+.room-page .play-record-card .play-record-row { min-height: 65px; padding: 10px 4px; border-bottom: 1px dashed #aa675c90; }
+.room-page .play-record-card .play-record-row:last-child { border-bottom: 0; }
+.room-record-scroll {
+  max-height: 28rem;
+  margin-top: 4px;
+  padding-inline: 3px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #a46a62 #f1ceb4;
+}
+.room-page .play-record-avatar { width: 40px; height: 40px; border: 2px solid #e9bc8d; background: #4d3244; box-shadow: 0 0 0 1px #87565a; color: #fff0d7; font: 800 17px/1 var(--room-serif); }
+.room-page .play-record-row:nth-child(3n + 2) .play-record-avatar { background: #315762; }
+.room-page .play-record-row:nth-child(3n + 3) .play-record-avatar { background: #854b51; }
+.room-page [data-portrait="1"] { --room-portrait: url('/assets/room-portrait-1.webp'); }
+.room-page [data-portrait="2"] { --room-portrait: url('/assets/room-portrait-2.webp'); }
+.room-page [data-portrait="3"] { --room-portrait: url('/assets/room-portrait-3.webp'); }
+.room-page [data-portrait="4"] { --room-portrait: url('/assets/room-portrait-4.webp'); }
+.room-page [data-portrait] { position: relative; }
+/* 头像图案盖在首字上，图片读取失败时仍有成员标识。 */
+.room-page [data-portrait]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--room-portrait, none) center / cover no-repeat;
+}
+.room-page .play-record-body small { color: #784d46; }
+.room-page .play-verdict {
+  min-width: 56px; min-height: 30px; border-color: #966444; background: #e7b77c55; color: #623c22;
+  font: 800 15px/1.1 var(--room-serif); transform: skew(-4deg);
+}
+.room-page .play-verdict.yes { border-color: #36787b; background: #a2c7b38c; color: #224b51; }
+.room-page .play-verdict.no { border-color: #a85255; background: #d4927c66; color: #783139; }
+.room-page .play-verdict-actions .play-ticket {
+  border: 1px solid #a76d62;
+  background: #f4d5b3;
+  box-shadow: none;
+  clip-path: none;
+  color: #582e40;
+}
+.room-page .play-verdict-actions .play-ticket:hover:not(:disabled) { background: #ffe8c9; }
+
+/* 两张底部操作票用颜色区分用途，按钮标签仍然使用可选中的网页文字。 */
+.room-page .play-action-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(148px, .56fr); gap: 16px; margin-top: 18px; align-items: stretch; }
+.room-page .play-action-card { padding: 13px 15px 17px; display: flex; flex-direction: column; gap: 7px; }
+.room-page .play-input-paper { --room-edge: 14px; flex: 1; padding: 9px 12px 8px; gap: 5px; }
+.room-page .play-input-paper:focus-within { outline: 2px solid #b7e6df; outline-offset: 1px; }
+.room-page .room-input-label { color: #643540; font: 850 15px/1.2 var(--room-serif); }
+.room-page .room-input-label b { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 4px; border-radius: 50%; background: #813d49; color: #ffe7c0; font: 850 16px/1 Georgia, serif; }
+.room-page .play-input-paper textarea { font-size: 14px; min-height: 46px; padding: 2px 0 0; }
+.room-page .play-input-paper textarea::placeholder { color: #825d58; }
+.room-page .play-input-paper textarea:focus-visible { outline: 0; }
+.room-page .play-action-foot { display: grid; justify-items: center; justify-content: stretch; gap: 5px; margin-top: 0; color: #ffebd4; text-align: center; }
+.room-page .play-action-foot > span { order: 2; min-height: 14px; font-size: 11px; line-height: 1.4; }
+.room-page .play-action-foot .play-ticket { --room-edge: 14px; width: min(90%, 288px); min-height: 45px; gap: 12px; padding: 7px 13px; font: 850 20px/1.18 var(--room-serif); }
+.room-page .play-action-foot .play-ticket:disabled { opacity: .84; }
+.room-page .play-room-extra-actions { flex-direction: column; justify-content: flex-end; gap: 8px; margin: 0 0 3px; }
+.room-page .play-room-extra-actions .play-ticket { --room-edge: 14px; min-height: 45px; font: 850 18px/1.2 var(--room-serif); }
+.room-page .play-room-extra-actions .play-link { font-size: 12px; }
+
+@media (max-width: 900px) {
+  .room-page .play-scene-content { padding-inline: 16px; }
+  .room-page .play-page-heading { gap: 12px; }
+  .room-page .play-back { min-width: 87px; height: 40px; font-size: 14px; }
+  .room-page .play-room-ribbon > span { min-height: 38px; }
+  .room-page .play-room-ribbon strong { font-size: 15px; }
+  .room-page .play-action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .room-page .play-room-extra-actions { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+}
+
+@media (max-width: 720px) {
+  .room-page::before { background: #1b132491; }
+  .room-page .play-room-grid, .room-page .play-action-grid { grid-template-columns: minmax(0, 1fr); }
+  .room-page .play-room-grid, .room-page .play-room-left, .room-page .play-room-right { gap: 14px; }
+  .room-page .play-page-heading { min-height: 0; gap: 11px; }
+  .room-page .play-room-ribbon { order: 2; width: 100%; }
+  .room-page .play-connection { margin-left: 0; }
+  .room-page .play-paper { padding: 15px 17px; }
+  .room-page .play-case-card { min-height: 0; }
+  .room-page .play-case-head { margin-top: -3px; }
+  .room-page .play-case-tab { min-width: 90px; min-height: 37px; margin-left: -7px; font-size: 20px; }
+  .room-page .play-case-content { grid-template-columns: minmax(0, .7fr) minmax(0, 1fr); gap: 13px; }
+  .room-page .play-case-copy p { font-size: 14px; }
+  .room-page .play-record-card { min-height: 0; }
+  .room-page .play-record-card .room-record-title { min-height: 42px; margin: -14px 0 0 -5px; }
+  .room-record-scroll { max-height: 18rem; }
+  .room-page .play-member-list { gap: 5px; }
+  .room-page .room-member-label { padding-inline: 5px; }
+}
+
+@media (max-width: 390px) {
+  .room-page .play-scene-content { padding-inline: 10px; }
+  .room-page .play-room-ribbon { gap: 3px; }
+  .room-page .play-room-ribbon > span { gap: 3px; padding-inline: 8px; }
+  .room-page .play-room-ribbon strong { font-size: 13px; }
+  .room-page .play-case-content { grid-template-columns: minmax(0, 1fr); }
+  .room-page .play-case-image { width: 110px; order: 2; margin: 0 auto 5px; }
+}
