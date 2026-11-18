@@ -38,6 +38,15 @@ type MetricDistribution struct {
 	Max   float64 `json:"max"`
 }
 
+// RestorePassMetrics 衡量人工标注和模型判定中的正确还原。分母为零时指标为 null。
+type RestorePassMetrics struct {
+	ExpectedCorrect  int      `json:"expectedCorrect"`
+	PredictedCorrect int      `json:"predictedCorrect"`
+	TrueCorrect      int      `json:"trueCorrect"`
+	Recall           *float64 `json:"recall"`
+	Precision        *float64 `json:"precision"`
+}
+
 type EvalReport struct {
 	Total                       int                `json:"total"`
 	Correct                     int                `json:"correct"`
@@ -52,6 +61,7 @@ type EvalReport struct {
 	NonCorrectEvaluated         int                `json:"nonCorrectEvaluated"`
 	FalseCorrectCount           int                `json:"falseCorrectCount"`
 	FalseCorrectRate            float64            `json:"falseCorrectRate"`
+	RestorePass                 RestorePassMetrics `json:"restorePass"`
 	LatencyDistribution         MetricDistribution `json:"latencyDistributionMs"`
 	PromptTokenDistribution     MetricDistribution `json:"promptTokenDistribution"`
 	CompletionTokenDistribution MetricDistribution `json:"completionTokenDistribution"`
@@ -118,8 +128,12 @@ func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport
 	}
 	var latencies, promptTokens, completionTokens, totalTokens []float64
 	for _, sample := range cases {
-		if sample.Kind == "restore" && sample.Expected != "正确" {
-			report.NonCorrectRestore++
+		if sample.Kind == "restore" {
+			if sample.Expected == "正确" {
+				report.RestorePass.ExpectedCorrect++
+			} else {
+				report.NonCorrectRestore++
+			}
 		}
 		var decision Decision
 		var err error
@@ -175,9 +189,23 @@ func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport
 	if report.NonCorrectEvaluated > 0 {
 		report.FalseCorrectRate = float64(report.FalseCorrectCount) / float64(report.NonCorrectEvaluated)
 	}
+	// 召回包含所有人工标注为正确的还原，即使模型超时或输出无效。
+	pass := &report.RestorePass
+	pass.TrueCorrect = report.RestoreConfusion.Counts[0][0]
+	pass.PredictedCorrect = pass.TrueCorrect + report.FalseCorrectCount
+	pass.Recall = metricRatio(pass.TrueCorrect, pass.ExpectedCorrect)
+	pass.Precision = metricRatio(pass.TrueCorrect, pass.PredictedCorrect)
 	report.LatencyDistribution = distribution(latencies)
 	report.PromptTokenDistribution = distribution(promptTokens)
 	report.CompletionTokenDistribution = distribution(completionTokens)
 	report.TotalTokenDistribution = distribution(totalTokens)
 	return report
+}
+
+func metricRatio(numerator, denominator int) *float64 {
+	if denominator == 0 {
+		return nil
+	}
+	ratio := float64(numerator) / float64(denominator)
+	return &ratio
 }

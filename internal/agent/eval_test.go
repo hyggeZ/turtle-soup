@@ -134,6 +134,38 @@ func TestFalseCorrectRateExcludesFailedClassifications(t *testing.T) {
 	}
 }
 
+func TestRestoreRecallAndPrecisionIncludeMissingCorrectResult(t *testing.T) {
+	replay := &evalReplay{
+		results: map[string]Decision{
+			"hit":      {Result: "正确"},
+			"mistaken": {Result: "正确"},
+		},
+		errors:  map[string]error{"timeout": context.DeadlineExceeded},
+		history: map[string]int{},
+	}
+	cases := []EvalCase{
+		{Kind: "restore", Input: "hit", Expected: "正确"},
+		{Kind: "restore", Input: "timeout", Expected: "正确"},
+		{Kind: "restore", Input: "mistaken", Expected: "不完整"},
+	}
+	report := Evaluate(context.Background(), replay, cases)
+	pass := report.RestorePass
+	if pass.ExpectedCorrect != 2 || pass.PredictedCorrect != 2 || pass.TrueCorrect != 1 ||
+		pass.Recall == nil || *pass.Recall != .5 || pass.Precision == nil || *pass.Precision != .5 {
+		t.Fatalf("正确还原召回率或精确率有误：%+v", pass)
+	}
+
+	failed := Evaluate(context.Background(), replay, cases[1:2]).RestorePass
+	if failed.Recall == nil || *failed.Recall != 0 || failed.Precision != nil {
+		t.Fatalf("没有模型判为正确时，精确率应未定义：%+v", failed)
+	}
+
+	empty := Evaluate(context.Background(), replay, nil).RestorePass
+	if empty.Recall != nil || empty.Precision != nil {
+		t.Fatalf("没有样例时，召回率和精确率应未定义：%+v", empty)
+	}
+}
+
 func TestEvaluateDoesNotExposeProviderText(t *testing.T) {
 	replay := &evalReplay{
 		results: map[string]Decision{"bad": {Result: "私密汤底"}},
