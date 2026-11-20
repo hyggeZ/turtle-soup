@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Turtle Soup data audit hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

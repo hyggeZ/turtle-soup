@@ -1,4 +1,4 @@
-// 本地命令初始化超级管理员；密码通过环境变量传入，不写入仓库。
+// 本地管理命令初始化超级管理员或检查数据一致性。
 package main
 
 import (
@@ -12,6 +12,24 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		if os.Args[1] != "audit" {
+			log.Fatal("用法：turtle-admin [audit [-days 7]]")
+		}
+		issues, err := runAudit(os.Args[2:], os.Stdout)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if issues {
+			os.Exit(2)
+		}
+		return
+	}
+	setupAdmin()
+}
+
+// 密码通过环境变量传入，不写入仓库。
+func setupAdmin() {
 	url := os.Getenv("DATABASE_URL")
 	password := os.Getenv("SUPER_ADMIN_PASSWORD")
 	if url == "" || password == "" {

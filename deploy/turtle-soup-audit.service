@@ -1,0 +1,15 @@
+[Unit]
+Description=Turtle Soup data audit
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=turtlesoup
+Group=turtlesoup
+WorkingDirectory=/srv/turtle-soup
+Environment="DATABASE_URL=host=/var/run/postgresql dbname=turtle_soup user=turtlesoup sslmode=disable"
+ExecStart=/srv/turtle-soup/current/turtle-admin audit -days 7
+TimeoutStartSec=30s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
