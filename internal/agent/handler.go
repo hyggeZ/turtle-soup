@@ -245,7 +245,11 @@ func (h *Handler) decide(ctx context.Context, id int64, soup Soup, input actionI
 	modelCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	endHistory := telemetry.BeginResult(modelCtx, "ai.history")
-	history, err := h.store.History(modelCtx, id)
+	turns := historyTurns
+	if len(quotedAliases(input.Body)) > 0 {
+		turns = contextHistoryTurns
+	}
+	history, err := h.store.readHistory(modelCtx, id, turns)
 	endHistory(err)
 	if err != nil {
 		return Decision{}, err

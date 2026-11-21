@@ -234,12 +234,16 @@ func (s *Store) ClaimWithAvailability(ctx context.Context, user, id int64, opera
 }
 
 func (s *Store) History(ctx context.Context, gameID int64) ([]Exchange, error) {
-	rows, err := s.db.Query(ctx, `SELECT body,result FROM ai_events WHERE game_id=$1 AND kind='question' ORDER BY id DESC LIMIT $2`, gameID, historyTurns)
+	return s.readHistory(ctx, gameID, historyTurns)
+}
+
+func (s *Store) readHistory(ctx context.Context, gameID int64, turns int) ([]Exchange, error) {
+	rows, err := s.db.Query(ctx, `SELECT body,result FROM ai_events WHERE game_id=$1 AND kind='question' ORDER BY id DESC LIMIT $2`, gameID, turns)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	history := make([]Exchange, 0, historyTurns)
+	history := make([]Exchange, 0, turns)
 	for rows.Next() {
 		var item Exchange
 		if err := rows.Scan(&item.Question, &item.Answer); err != nil {

@@ -65,6 +65,15 @@ func TestHistoryWindowWithPostgres(t *testing.T) {
 	if short[0].Question != alias || short[0].Answer != "是" || short[13].Question != "短局问题 14" {
 		t.Fatalf("短局上下文遗漏早期代号或最后一轮：%+v", short)
 	}
+	if _, err := db.Exec(ctx, `INSERT INTO ai_events(game_id,operation_id,kind,body,result)
+		SELECT $1,'history-extra-'||n,'question','长局问题 '||n,'是' FROM generate_series(31,70) n`, longGame); err != nil {
+		t.Fatal(err)
+	}
+	expanded, err := store.readHistory(ctx, longGame, contextHistoryTurns)
+	if err != nil || len(expanded) != contextHistoryTurns || expanded[0].Question != "长局问题 7" ||
+		expanded[len(expanded)-1].Question != "长局问题 70" {
+		t.Fatalf("扩展窗口应按正序读取同局最近 64 条问题：数量=%d，错误=%v", len(expanded), err)
+	}
 }
 
 // 使用本测试独立 schema，避免读写其他对局。

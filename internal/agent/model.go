@@ -16,7 +16,7 @@ import (
 
 const defaultBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 const defaultModel = "qwen-plus"
-const PromptVersion = "v3"
+const PromptVersion = "v4"
 
 var ErrUnavailable = errors.New("AI 服务未配置或暂时不可用")
 var ErrInvalidOutput = errors.New("AI 返回了无效判定")
@@ -125,15 +125,16 @@ func (q *Qwen) decide(ctx context.Context, soup Soup, history []Exchange, kind, 
 	if q.Client == nil {
 		return Decision{}, ErrUnavailable
 	}
-	historyData, err := encodeHistory(history)
+	historyData, excerpt, err := contextHistory(history, input)
 	if err != nil {
 		return Decision{}, err
 	}
 	userData, err := json.Marshal(struct {
 		Soup    Soup            `json:"soup"`
 		History json.RawMessage `json:"history"`
+		Excerpt bool            `json:"history_is_excerpt,omitempty"`
 		Input   string          `json:"input"`
-	}{Soup: soup, History: historyData, Input: input})
+	}{Soup: soup, History: historyData, Excerpt: excerpt, Input: input})
 	if err != nil {
 		return Decision{}, err
 	}
