@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go 与 PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: turtle_ci
+          POSTGRES_PASSWORD: turtle_ci
+          POSTGRES_DB: turtle_ci
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U turtle_ci -d turtle_ci"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Go 测试和数据库集成验证
+        # 包之间串行，避免共用数据库的迁移锁相互影响。
+        env:
+          TEST_DATABASE_URL: postgres://turtle_ci:turtle_ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/turtle_ci?sslmode=disable
+        run: go test -mod=readonly -count=1 -p=1 ./...
+      - name: Go 静态检查
+        run: go vet -mod=readonly ./...
+
+  web:
+    name: Vue 测试与构建
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
