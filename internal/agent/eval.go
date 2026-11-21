@@ -57,6 +57,8 @@ type EvalReport struct {
 	CompletionTokens            int                `json:"completionTokens"`
 	QuestionConfusion           ConfusionMatrix    `json:"questionConfusion"`
 	RestoreConfusion            ConfusionMatrix    `json:"restoreConfusion"`
+	QuestionF1                  ClassF1Summary     `json:"questionF1"`
+	RestoreF1                   ClassF1Summary     `json:"restoreF1"`
 	NonCorrectRestore           int                `json:"nonCorrectRestore"`
 	NonCorrectEvaluated         int                `json:"nonCorrectEvaluated"`
 	FalseCorrectCount           int                `json:"falseCorrectCount"`
@@ -195,6 +197,7 @@ func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport
 	pass.PredictedCorrect = pass.TrueCorrect + report.FalseCorrectCount
 	pass.Recall = metricRatio(pass.TrueCorrect, pass.ExpectedCorrect)
 	pass.Precision = metricRatio(pass.TrueCorrect, pass.PredictedCorrect)
+	report.QuestionF1, report.RestoreF1 = ClassificationF1(report.Items)
 	report.LatencyDistribution = distribution(latencies)
 	report.PromptTokenDistribution = distribution(promptTokens)
 	report.CompletionTokenDistribution = distribution(completionTokens)
