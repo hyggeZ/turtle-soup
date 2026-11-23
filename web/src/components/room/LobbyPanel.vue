@@ -61,8 +61,11 @@ async function load() {
   rooms.value = []
   mine.value = []
   try {
-    const publicRooms = await request('/api/rooms')
-    const ownRooms = userId ? await request('/api/rooms/mine') : []
+    // 两份列表互不依赖，一起发起，再按当前账号与加载版本应用结果。
+    const [publicRooms, ownRooms] = await Promise.all([
+      request('/api/rooms'),
+      userId ? request('/api/rooms/mine') : [],
+    ])
     if (version !== loadVersion || props.user?.id !== userId) return
     rooms.value = publicRooms
     hasMoreRooms.value = publicRooms.length === 50
