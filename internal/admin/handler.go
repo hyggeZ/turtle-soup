@@ -37,6 +37,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	r.PATCH("/api/admin/users/:id", h.update)
 	r.GET("/api/admin/telemetry", h.telemetry)
 	r.GET("/api/admin/ai-metrics", h.aiMetrics)
+	r.GET("/api/admin/audit", h.listAudit)
 	r.GET("/api/admin/soups", h.listSoups)
 	r.PATCH("/api/admin/soups/:id", h.moderateSoup)
 }
@@ -143,14 +144,29 @@ func (h *Handler) create(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "创建账号失败"})
 		return
 	}
+	ctx := c.Request.Context()
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "创建账号失败"})
+		return
+	}
+	defer tx.Rollback(ctx)
 	var id int64
-	err = h.db.QueryRow(c.Request.Context(), `INSERT INTO users(username,password_hash,role,is_admin) VALUES($1,$2,$3,$3='admin') RETURNING id`, in.Username, string(hash), in.Role).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,is_admin) VALUES($1,$2,$3,$3='admin') RETURNING id`, in.Username, string(hash), in.Role).Scan(&id)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		c.JSON(409, gin.H{"error": "用户名已存在"})
 		return
 	}
 	if err != nil {
+		c.JSON(500, gin.H{"error": "创建账号失败"})
+		return
+	}
+	if err := recordAudit(ctx, tx, u.ID, "user", id, auditUserCreate); err != nil {
+		c.JSON(500, gin.H{"error": "创建账号失败"})
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		c.JSON(500, gin.H{"error": "创建账号失败"})
 		return
 	}
@@ -187,14 +203,16 @@ func (h *Handler) update(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "新密码需为 8–72 字节"})
 		return
 	}
-	tx, err := h.db.Begin(c.Request.Context())
+	ctx := c.Request.Context()
+	tx, err := h.db.Begin(ctx)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "修改失败"})
 		return
 	}
-	defer tx.Rollback(c.Request.Context())
+	defer tx.Rollback(ctx)
 	var role string
-	err = tx.QueryRow(c.Request.Context(), `SELECT role FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&role)
+	var disabled bool
+	err = tx.QueryRow(ctx, `SELECT role,disabled FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&role, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(404, gin.H{"error": "账号不存在"})
 		return
@@ -207,12 +225,18 @@ func (h *Handler) update(c *gin.Context) {
 		c.JSON(403, gin.H{"error": "不能管理同级或更高级的账号"})
 		return
 	}
-	if in.Disabled != nil {
-		_, err = tx.Exec(c.Request.Context(), `UPDATE users SET disabled=$2 WHERE id=$1`, id, *in.Disabled)
+	actions := make([]string, 0, 2)
+	if in.Disabled != nil && *in.Disabled != disabled {
+		_, err = tx.Exec(ctx, `UPDATE users SET disabled=$2 WHERE id=$1`, id, *in.Disabled)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "修改失败"})
 			return
 		}
+		action := auditUserEnable
+		if *in.Disabled {
+			action = auditUserDisable
+		}
+		actions = append(actions, action)
 	}
 	if in.Password != "" {
 		hash, hashErr := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
@@ -220,18 +244,26 @@ func (h *Handler) update(c *gin.Context) {
 			c.JSON(500, gin.H{"error": "修改失败"})
 			return
 		}
-		_, err = tx.Exec(c.Request.Context(), `UPDATE users SET password_hash=$2 WHERE id=$1`, id, string(hash))
+		_, err = tx.Exec(ctx, `UPDATE users SET password_hash=$2 WHERE id=$1`, id, string(hash))
 		if err != nil {
 			c.JSON(500, gin.H{"error": "修改失败"})
 			return
 		}
+		actions = append(actions, auditUserPasswordChange)
 	}
-	_, err = tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id=$1`, id)
-	if err != nil {
+	if len(actions) == 0 {
+		c.JSON(200, gin.H{"id": id, "role": role})
+		return
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, id); err != nil {
 		c.JSON(500, gin.H{"error": "修改失败"})
 		return
 	}
-	if err = tx.Commit(c.Request.Context()); err != nil {
+	if err := recordAudit(ctx, tx, u.ID, "user", id, actions...); err != nil {
+		c.JSON(500, gin.H{"error": "修改失败"})
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		c.JSON(500, gin.H{"error": "修改失败"})
 		return
 	}

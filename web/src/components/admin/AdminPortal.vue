@@ -1,18 +1,26 @@
 <script setup>
-// 后台入口负责登录和三个模块的切换；具体操作仍由服务端校验权限。
-import { ref } from 'vue'
+// 后台入口负责登录和模块切换，具体操作由服务端校验权限。
+import { computed, nextTick, ref } from 'vue'
 import { send } from '../../api'
 import AdminPanel from './AdminPanel.vue'
+import AuditPanel from './AuditPanel.vue'
 import ContentPanel from './ContentPanel.vue'
 import TelemetryPanel from './TelemetryPanel.vue'
 
-defineProps({ user: { type: Object, default: null } })
+const props = defineProps({ user: { type: Object, default: null } })
 const emit = defineEmits(['logged-in', 'logout'])
 const page = ref('home')
+const auditEntry = ref(null)
 const username = ref('')
 const password = ref('')
 const error = ref('')
 const loggingIn = ref(false)
+const canAudit = computed(() => props.user?.role === 'super_admin')
+
+function backFromAudit() {
+  page.value = 'home'
+  nextTick(() => auditEntry.value?.focus())
+}
 
 async function login() {
   if (loggingIn.value) return
@@ -38,7 +46,7 @@ async function login() {
   <div class="admin-ui">
     <div class="night-scene" aria-hidden="true"></div>
 
-    <main v-if="user?.isAdmin && page === 'home'" class="admin-home">
+    <main v-if="user?.isAdmin && (page === 'home' || (page === 'audit' && !canAudit))" class="admin-home">
       <div class="home-top">
         <a class="back-ticket" href="/">← 游戏首页</a>
         <div class="identity-ticket">
@@ -52,7 +60,7 @@ async function login() {
         <div class="title-line"><span class="turtle-mark" aria-hidden="true"></span><h1>管理后台</h1></div>
         <p>选择一项管理工作</p>
       </div>
-      <div class="module-grid">
+      <div class="module-grid" :class="{ 'has-audit': canAudit }">
         <a href="/admin" class="module-ticket module-users" @click.prevent="page = 'users'">
           <span class="module-top"><span>01 / ACCOUNTS</span><span class="module-seal">◎</span></span>
           <svg viewBox="0 0 96 96" class="module-icon" aria-hidden="true"><circle cx="48" cy="28" r="12"/><path d="M24 74c0-15 10-25 24-25s24 10 24 25"/><circle cx="19" cy="40" r="7"/><path d="M7 66c1-10 6-17 14-19"/><circle cx="77" cy="40" r="7"/><path d="M89 66c-1-10-6-17-14-19"/></svg>
@@ -71,12 +79,18 @@ async function login() {
           <h2>运行日志</h2><p>查看接口耗时与请求链路</p>
           <span class="module-enter">查看运行日志 <b>→</b></span>
         </a>
+        <a v-if="canAudit" ref="auditEntry" href="/admin" class="module-ticket module-audit" aria-label="进入操作审计" @click.prevent="page = 'audit'">
+          <svg viewBox="0 0 96 96" class="module-icon" aria-hidden="true"><path d="M24 16h48v64H24zM35 34h26M35 48h26M35 62h17"/></svg>
+          <h2>操作审计</h2><p>查看账号与题目变更</p>
+          <span class="module-enter">进入操作审计 <b aria-hidden="true">→</b></span>
+        </a>
       </div>
     </main>
 
     <AdminPanel v-else-if="user?.isAdmin && page === 'users'" :role="user.role" @back="page = 'home'" />
     <ContentPanel v-else-if="user?.isAdmin && page === 'content'" :role="user.role" @back="page = 'home'" />
     <TelemetryPanel v-else-if="user?.isAdmin && page === 'telemetry'" @back="page = 'home'" />
+    <AuditPanel v-else-if="user?.isAdmin && canAudit && page === 'audit'" @back="backFromAudit" />
 
     <main v-else class="admin-login">
       <a class="back-ticket" href="/">← 游戏首页</a>

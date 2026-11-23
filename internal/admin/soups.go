@@ -188,9 +188,10 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 		}
 	}
 	// 建房与单人开局都会锁题目行，隐藏操作在此与它们串行化。
-	err = tx.QueryRow(ctx, `SELECT u.role,s.deleted_at FROM soups s
+	var hiddenAt *time.Time
+	err = tx.QueryRow(ctx, `SELECT u.role,s.deleted_at,s.hidden_at FROM soups s
 		JOIN users u ON u.id=s.author_id WHERE s.id=$1 FOR UPDATE OF s`, id).
-		Scan(&role, &deleted)
+		Scan(&role, &deleted, &hiddenAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, http.StatusNotFound, nil
 	}
@@ -203,12 +204,15 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 	if deleted != nil {
 		return nil, http.StatusConflict, nil
 	}
-	_, err = tx.Exec(ctx, `UPDATE soups SET
-		hidden_at=CASE WHEN $2 THEN COALESCE(hidden_at,NOW()) ELSE NULL END,
-		hidden_by=CASE WHEN $2 THEN COALESCE(hidden_by,$3) ELSE NULL END,
-		updated_at=NOW() WHERE id=$1`, id, hidden, operatorID)
-	if err != nil {
-		return nil, 0, err
+	changed := (hiddenAt != nil) != hidden
+	if changed {
+		_, err = tx.Exec(ctx, `UPDATE soups SET
+			hidden_at=CASE WHEN $2 THEN NOW() ELSE NULL END,
+			hidden_by=CASE WHEN $2 THEN $3::bigint ELSE NULL END,
+			updated_at=NOW() WHERE id=$1`, id, hidden, operatorID)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	closed := make([]int64, 0)
 	if hidden {
@@ -232,6 +236,16 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 		err = rows.Err()
 		rows.Close()
 		if err != nil {
+			return nil, 0, err
+		}
+	}
+	// 重复隐藏只在确实关掉遗留等待房时留下审计记录。
+	if changed || len(closed) > 0 {
+		action := auditSoupRestore
+		if hidden {
+			action = auditSoupHide
+		}
+		if err := recordAudit(ctx, tx, operatorID, "soup", id, action); err != nil {
 			return nil, 0, err
 		}
 	}

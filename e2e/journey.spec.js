@@ -160,7 +160,7 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
     await expect(solo.getByText(answer, { exact: true })).toHaveCount(0)
   })
 
-  await test.step('后台拒绝普通用户，管理员隐藏题目后社区不再展示', async () => {
+  await test.step('后台审核、操作审计与社区可见性', async () => {
     await solo.goto('/admin')
     await solo.getByLabel('用户名').fill(names.solo)
     await solo.getByLabel('密码').fill(playerPassword)
@@ -175,12 +175,24 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
     const row = admin.getByRole('table', { name: '题目列表' }).getByRole('row').filter({ hasText: title })
     await row.getByRole('button', { name: '隐藏', exact: true }).click()
     const dialog = admin.getByRole('dialog', { name: '隐藏题目' })
-    await dialog.getByRole('button', { name: '确认隐藏' }).click()
+    const [moderated] = await Promise.all([
+      admin.waitForResponse(res => res.request().method() === 'PATCH' && /^\/api\/admin\/soups\/\d+$/.test(new URL(res.url()).pathname)),
+      dialog.getByRole('button', { name: '确认隐藏' }).click(),
+    ])
+    expect(moderated.ok()).toBe(true)
     await expect(admin.getByRole('status')).toContainText('题目已隐藏')
     await expect(row.getByRole('button', { name: '恢复公开' })).toBeVisible()
 
+    await admin.goto('/admin')
+    await admin.getByRole('link', { name: '进入操作审计' }).click()
+    const id = new URL(moderated.url()).pathname.split('/').at(-1)
+    const audit = admin.getByRole('table', { name: '操作审计记录' }).getByRole('row')
+      .filter({ hasText: '隐藏题目' }).filter({ has: admin.getByRole('cell', { name: `题目 #${id}`, exact: true }) })
+    await expect(audit.getByText('@king', { exact: true })).toBeVisible()
+
     await solo.goto('/')
     await expect(solo.getByRole('button', { name: '我的主页' })).toBeVisible()
+    expect((await solo.request.get('/api/admin/audit')).status()).toBe(403)
     const soups = await openCommunity(solo)
     expect(soups.map(soup => soup.title)).not.toContain(title)
     await expect(solo.getByText('正在加载题目…', { exact: true })).toHaveCount(0)

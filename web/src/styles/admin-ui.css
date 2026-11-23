@@ -42,6 +42,18 @@
 .admin-ui .module-soups .module-icon { stroke: #237484; }.admin-ui .module-soups .module-enter { background: #287787; box-shadow: inset 0 0 0 2px #8dd1d2; }
 .admin-ui .module-logs { background: linear-gradient(140deg,#fff7e7,#edcdb4); }
 .admin-ui .module-logs .module-icon { stroke: #8d4e42; }.admin-ui .module-logs .module-enter { background: #793a49; }
+.admin-ui .module-audit { background: linear-gradient(140deg,#fff8e9,#dfd3df); }
+.admin-ui .module-audit .module-icon { stroke: #6b536d; }
+.admin-ui .module-audit .module-enter { background: #634964; box-shadow: inset 0 0 0 2px #d4b2cf; }
+@media (min-width: 621px) {
+  .admin-ui .module-audit .module-icon { margin-top: 56px; }
+}
+@media (min-width: 621px) and (max-width: 1199px) {
+  .admin-ui .module-grid.has-audit { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (min-width: 1200px) {
+  .admin-ui .module-grid.has-audit { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
 
 /* 未登录页沿用同一场景，表单用浅色档案纸承载。 */
 .admin-ui .admin-login { min-height: 100vh; padding: 38px max(56px,calc((100vw - 1310px)/2)) 55px; }
