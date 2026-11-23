@@ -129,7 +129,7 @@ async function main() {
     [vite, 'preview', '--host', host, '--port', String(webPort), '--strictPort', '--outDir', dist], { cwd: web })
   await ready(preview, `http://${host}:${webPort}/`)
 
-  const testEnv = { ...process.env, E2E_ADMIN_PASSWORD: adminPassword }
+  const testEnv = { ...process.env, E2E_ADMIN_PASSWORD: adminPassword, ROOM_OFFLINE_WEB_DIST: dist }
   await run('浏览器验收', process.execPath, [playwright, 'test', ...process.argv.slice(2)], { cwd: here, env: testEnv })
 }
 

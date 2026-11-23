@@ -384,7 +384,6 @@ function scheduleReconnect() {
     reconnectTimer = null
     connect()
   }, wait)
-  scheduleRefresh()
 }
 
 function connect() {
@@ -413,10 +412,13 @@ function connect() {
   }
   connection.onclose = () => {
     if (!active || socket !== connection) return
+    const wasConnected = connected.value
     socket = null
     connected.value = false
     clearTimeout(stableTimer)
     scheduleReconnect()
+    // 只在原有连接断开时切换到离线补查。后续握手失败不推迟 HTTP 补查。
+    if (wasConnected) scheduleRefresh()
   }
 }
 
