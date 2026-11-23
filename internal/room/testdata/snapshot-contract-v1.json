@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "玩家首页",
+      "role": "player",
+      "query": "history=2&tasks=1",
+      "status": 200,
+      "response": {
+        "answer": "", "events": [], "eventCursor": 52, "historyBefore": 3,
+        "tasks": { "pendingRestore": false, "pendingAnswer": false, "items": [], "nextAfter": 0 }
+      }
+    },
+    {
+      "name": "较早历史",
+      "role": "player",
+      "query": "history=2&before=3",
+      "status": 200,
+      "response": {
+        "answer": "", "events": [{ "id": 1, "kind": "question" }],
+        "eventCursor": 2, "historyBefore": 0
+      }
+    },
+    {
+      "name": "增量追赶",
+      "role": "player",
+      "query": "history=2&after=0&tasks=1",
+      "status": 200,
+      "response": {
+        "answer": "", "events": [{ "id": 1, "kind": "question" }],
+        "eventCursor": 50, "hasMoreNew": true,
+        "tasks": { "pendingRestore": false, "pendingAnswer": false, "items": [], "nextAfter": 0 }
+      }
+    },
+    {
+      "name": "权限过滤后的增量",
+      "role": "player",
+      "query": "history=2&after=50&tasks=1",
+      "status": 200,
+      "response": {
+        "answer": "", "events": [], "eventCursor": 52, "hasMoreNew": false,
+        "tasks": { "pendingRestore": false, "pendingAnswer": false, "items": [], "nextAfter": 0 }
+      }
+    },
+    {
+      "name": "主持待办续页",
+      "role": "host",
+      "query": "history=2&after=52&tasks=1&tasksAfter=51",
+      "status": 200,
+      "response": {
+        "answer": "回看绝密汤底", "events": [], "eventCursor": 52, "hasMoreNew": false,
+        "tasks": {
+          "pendingRestore": false, "pendingAnswer": false,
+          "items": [{ "id": 52, "kind": "restore" }], "nextAfter": 0
+        }
+      }
+    },
+    {
+      "name": "旧版增量",
+      "role": "player",
+      "query": "after=52",
+      "status": 200,
+      "response": { "answer": "", "events": [], "eventCursor": 52 }
+    },
+    {
+      "name": "互斥分页参数",
+      "role": "player",
+      "query": "history=2&before=3&after=0",
+      "status": 400,
+      "response": { "error": "历史分页参数无效" }
+    },
+    {
+      "name": "未登录",
+      "role": "anonymous",
+      "query": "history=2&tasks=1",
+      "status": 401,
+      "response": { "error": "请先登录" }
+    },
+    {
+      "name": "登录用户未加入房间",
+      "role": "outsider",
+      "query": "history=2&tasks=1",
+      "status": 404,
+      "response": { "error": "房间不存在" }
+    }
+  ]
+}

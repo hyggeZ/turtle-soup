@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc -p tsconfig.room.json",
-    "test": "node --test src/components/room/retryTiming.test.js src/components/room/eventHistory.test.js src/components/room/taskView.test.js src/components/room/snapshotFlow.test.js"
+    "test": "node --test src/components/room/retryTiming.test.js src/components/room/eventHistory.test.js src/components/room/taskView.test.js src/components/room/snapshotFlow.test.js src/components/room/snapshotContract.test.js"
   },
   "dependencies": {
     "vue": "^3.5.0"
