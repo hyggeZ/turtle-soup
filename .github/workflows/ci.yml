@@ -39,9 +39,22 @@ jobs:
         # 包之间串行，避免共用数据库的迁移锁相互影响。
         env:
           TEST_DATABASE_URL: postgres://turtle_ci:turtle_ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/turtle_ci?sslmode=disable
-        run: go test -mod=readonly -count=1 -p=1 ./...
+        run: |
+          export SNAPSHOT_CONTRACT_OUTPUT="$RUNNER_TEMP/snapshot-contract-results.json"
+          go test -mod=readonly -count=1 -p=1 ./...
       - name: Go 静态检查
         run: go vet -mod=readonly ./...
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/api/package-lock.json
+      - name: 校验实际房间快照是否符合 OpenAPI
+        working-directory: docs/api
+        run: |
+          export SNAPSHOT_CONTRACT_OUTPUT="$RUNNER_TEMP/snapshot-contract-results.json"
+          npm ci
+          npm test
 
   web:
     name: Vue 测试与构建

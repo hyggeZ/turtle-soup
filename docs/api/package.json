@@ -1,0 +1,14 @@
+{
+  "name": "turtle-soup-api-contract",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test openapi.test.js"
+  },
+  "devDependencies": {
+    "@seriousme/openapi-schema-validator": "2.12.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

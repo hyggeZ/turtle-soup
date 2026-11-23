@@ -19,6 +19,13 @@ type snapshotContractCase struct {
 	Response map[string]any `json:"response"`
 }
 
+type snapshotContractResult struct {
+	Name     string          `json:"name"`
+	Query    string          `json:"query"`
+	Status   int             `json:"status"`
+	Response json.RawMessage `json:"response"`
+}
+
 func loadSnapshotContract(t *testing.T) []snapshotContractCase {
 	t.Helper()
 	data, err := os.ReadFile("testdata/snapshot-contract-v1.json")
@@ -61,6 +68,8 @@ func TestRoomSnapshotContractV1(t *testing.T) {
 		t.Fatal(err)
 	}
 	roles := map[string]int{"host": host, "player": player, "outsider": outsider, "anonymous": -1}
+	output := os.Getenv("SNAPSHOT_CONTRACT_OUTPUT")
+	var results []snapshotContractResult
 	for _, test := range cases {
 		t.Run(test.Name, func(t *testing.T) {
 			who, ok := roles[test.Role]
@@ -82,7 +91,33 @@ func TestRoomSnapshotContractV1(t *testing.T) {
 			if test.Role != "host" && (strings.Contains(res.Body.String(), "回看绝密汤底") || strings.Contains(res.Body.String(), privateRestore)) {
 				t.Fatal("非主持身份收到了私密内容")
 			}
+			if output != "" {
+				results = append(results, snapshotContractResult{
+					Name:     test.Name,
+					Query:    test.Query,
+					Status:   res.Code,
+					Response: res.Body.Bytes(),
+				})
+			}
 		})
+	}
+	if output != "" && !t.Failed() {
+		writeSnapshotContract(t, output, results)
+	}
+}
+
+// 只导出隔离测试库的响应，供 OpenAPI 校验完整 JSON。
+func writeSnapshotContract(t *testing.T, path string, results []snapshotContractResult) {
+	t.Helper()
+	data, err := json.Marshal(struct {
+		Version int                      `json:"version"`
+		Cases   []snapshotContractResult `json:"cases"`
+	}{Version: 1, Cases: results})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

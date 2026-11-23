@@ -1,0 +1,212 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "海龟汤 HTTP API",
+    "version": "1.0.0",
+    "description": "房间快照接口规范。涵盖成员可见数据、历史分页、增量追赶和主持待办。"
+  },
+  "servers": [
+    { "url": "http://127.0.0.1:18080", "description": "本地 Go 服务" }
+  ],
+  "tags": [
+    { "name": "房间" }
+  ],
+  "paths": {
+    "/api/rooms/{id}": {
+      "get": {
+        "tags": ["房间"],
+        "summary": "读取成员视角的房间快照",
+        "operationId": "getRoomSnapshot",
+        "description": "新客户端使用 `history=2&tasks=1` 读取首页，用 `historyBefore` 向前翻页，用 `eventCursor` 追赶新事件。历史和增量均以最多 50 条原始事件为一页，实际返回的可见事件会经过权限过滤，也可能补入旧的父问题。旧客户端可省略 `history` 并单独传 `after`，继续使用旧版增量响应。`history=1` 的分页适用于已结束的房间。",
+        "security": [{ "sessionCookie": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "房间 ID。",
+            "schema": { "$ref": "#/components/schemas/ID" }
+          },
+          {
+            "name": "history",
+            "in": "query",
+            "description": "历史模式。1 用于已结束房间的历史分页，2 用于历史分页或有界增量。省略时走旧版快照。参数只能出现一次。",
+            "schema": { "type": "string", "enum": ["1", "2"] }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "读取该 ID 之前的历史。与 `history` 同时使用，取上一页返回的正数 `historyBefore`。在 `history=2` 时与 `after` 互斥。",
+            "schema": { "$ref": "#/components/schemas/ID" }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "读取该 ID 之后的新事件。`history=2` 时可传 0 从头追赶，参数只能出现一次。无 `history` 时采用旧版增量。`history=1` 时禁止传入。",
+            "schema": { "$ref": "#/components/schemas/Cursor" }
+          },
+          {
+            "name": "tasks",
+            "in": "query",
+            "description": "传 1 时返回 `tasks`。参数只能出现一次。",
+            "schema": { "type": "string", "const": "1" }
+          },
+          {
+            "name": "tasksAfter",
+            "in": "query",
+            "description": "主持待办游标，取上一页返回的正数 `tasks.nextAfter`。省略或传 0 从第一项开始。只在 `tasks=1` 时读取。",
+            "schema": { "$ref": "#/components/schemas/Cursor" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "房间快照。`history=2` 无 `after` 时返回 `historyBefore`，有 `after` 时返回 `hasMoreNew`。`history=1` 读取已结束房间时返回 `historyBefore`。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomSnapshot" } } }
+          },
+          "400": {
+            "description": "房间 ID 无效，或查询参数、分页游标不合法。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "需要有效的登录会话。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": {
+            "description": "房间不存在，或登录用户没有加入该房间。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "409": {
+            "description": "房间尚未结束，当前请求带有旧版历史分页 `history=1&before=…`。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "500": {
+            "description": "无法读取登录状态或房间快照。",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "turtle_session",
+        "description": "登录后由服务端签发的 HttpOnly 会话 Cookie。"
+      }
+    },
+    "schemas": {
+      "ID": { "type": "integer", "format": "int64", "minimum": 1 },
+      "NullableID": { "type": ["integer", "null"], "format": "int64", "minimum": 1 },
+      "Cursor": { "type": "integer", "format": "int64", "minimum": 0 },
+      "RoomRole": { "type": "string", "enum": ["host", "player", "spectator"] },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string", "minLength": 1 } }
+      },
+      "RoomSnapshot": {
+        "type": "object",
+        "required": [
+          "id", "code", "mode", "status", "ownerId", "hostId", "soupId", "maxPlayers", "public",
+          "turnUserId", "turnDeadline", "serverTime", "winnerId", "title", "surface", "genre", "difficulty",
+          "horror", "answerPublished", "answer", "myRole", "members", "events", "eventCursor"
+        ],
+        "not": { "required": ["historyBefore", "hasMoreNew"] },
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ID" },
+          "code": { "type": "string" },
+          "mode": { "type": "string", "enum": ["casual", "competitive"] },
+          "status": { "type": "string", "enum": ["waiting", "active", "paused", "finished", "closed"] },
+          "ownerId": { "$ref": "#/components/schemas/ID" },
+          "hostId": { "$ref": "#/components/schemas/NullableID" },
+          "soupId": { "$ref": "#/components/schemas/ID" },
+          "maxPlayers": { "type": "integer", "minimum": 2, "maximum": 20 },
+          "public": { "type": "boolean" },
+          "turnUserId": { "$ref": "#/components/schemas/NullableID" },
+          "turnDeadline": { "type": ["string", "null"], "format": "date-time" },
+          "serverTime": { "type": "string", "format": "date-time" },
+          "winnerId": { "$ref": "#/components/schemas/NullableID" },
+          "title": { "type": "string" },
+          "surface": { "type": "string" },
+          "genre": { "type": "string", "enum": ["本格", "变格"] },
+          "difficulty": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "horror": { "type": "integer", "minimum": 0, "maximum": 5 },
+          "answerPublished": { "type": "boolean" },
+          "answer": { "type": "string", "description": "主持人、已获准看底的成员或汤底公开后的成员可读取汤底。其他成员收到空字符串。" },
+          "myRole": { "$ref": "#/components/schemas/RoomRole" },
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/RoomMember" } },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/RoomEvent" } },
+          "eventCursor": {
+            "$ref": "#/components/schemas/Cursor",
+            "description": "当前原始窗口的最新事件 ID。增量页中没有新原始事件时等于请求的 `after`。即使 `events` 因权限过滤而为空，也应继续使用该游标。"
+          },
+          "historyBefore": {
+            "$ref": "#/components/schemas/Cursor",
+            "description": "将此值传入 `before` 可读取更早历史。值为 0 时到达末尾。仅历史分页响应返回。"
+          },
+          "hasMoreNew": { "type": "boolean", "description": "是否还有待追赶的新原始事件。仅 `history=2` 的增量响应返回。" },
+          "tasks": { "$ref": "#/components/schemas/RoomTasks", "description": "仅 `tasks=1` 时返回。" }
+        }
+      },
+      "RoomMember": {
+        "type": "object",
+        "required": ["id", "username", "role", "correct", "hostRequest"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ID" },
+          "username": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/RoomRole" },
+          "correct": { "type": "boolean" },
+          "hostRequest": { "type": "boolean" }
+        }
+      },
+      "RoomEvent": {
+        "type": "object",
+        "required": ["id", "userId", "subjectUserId", "kind", "body", "result", "parentId", "createdAt"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ID" },
+          "userId": { "$ref": "#/components/schemas/ID" },
+          "subjectUserId": { "$ref": "#/components/schemas/NullableID" },
+          "kind": {
+            "type": "string",
+            "enum": ["question", "answer", "restore", "restore_result", "answer_request", "answer_result"]
+          },
+          "body": { "type": "string" },
+          "result": { "type": "string" },
+          "parentId": { "$ref": "#/components/schemas/NullableID" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RoomTasks": {
+        "type": "object",
+        "required": ["pendingRestore", "pendingAnswer", "items", "nextAfter"],
+        "properties": {
+          "pendingRestore": { "type": "boolean", "description": "当前玩家有待判定的还原。" },
+          "pendingAnswer": { "type": "boolean", "description": "当前玩家有待审批的看底申请。" },
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "主持待处理的项目，玩家和旁观者收到空数组。",
+            "items": { "$ref": "#/components/schemas/RoomTask" }
+          },
+          "nextAfter": {
+            "$ref": "#/components/schemas/Cursor",
+            "description": "将此值传入 `tasksAfter` 可读取下一页。值为 0 时到达末尾。"
+          }
+        }
+      },
+      "RoomTask": {
+        "type": "object",
+        "required": ["id", "userId", "kind", "body", "createdAt"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ID" },
+          "userId": { "$ref": "#/components/schemas/ID" },
+          "kind": { "type": "string", "enum": ["question", "restore", "answer_request"] },
+          "body": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
