@@ -50,7 +50,7 @@ func TestAIEvalCLIQualityGate(t *testing.T) {
 	if len(cases) != 24 {
 		t.Fatalf("独立验证集应有 24 条样例，得到 %d 条", len(cases))
 	}
-	scope, err := describeScope("holdout", len(cases), cases)
+	scope, err := describeScope("holdout", len(cases), cases, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

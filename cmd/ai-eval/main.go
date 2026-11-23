@@ -16,11 +16,12 @@ import (
 )
 
 type output struct {
-	Model         string           `json:"model"`
-	PromptVersion string           `json:"promptVersion"`
-	EvalSetHash   string           `json:"evalSetHash"`
-	Scope         evalScope        `json:"scope"`
-	Report        agent.EvalReport `json:"report"`
+	Model          string                `json:"model"`
+	PromptVersion  string                `json:"promptVersion"`
+	EvalSetHash    string                `json:"evalSetHash"`
+	Scope          evalScope             `json:"scope"`
+	Report         agent.EvalReport      `json:"report"`
+	BoundaryGroups []boundaryGroupReport `json:"boundaryGroups,omitempty"`
 }
 
 func main() {
@@ -36,7 +37,7 @@ func run(args []string, stdout io.Writer) error {
 	}
 	flags := flag.NewFlagSet("ai-eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	suite := flags.String("suite", "dev", "题集，dev 为开发集，holdout 为独立验证集")
+	suite := flags.String("suite", "dev", "题集，dev 为开发集，holdout 为独立验证集，boundary 为边界用例")
 	limit := flags.Int("limit", 0, "只评测前 N 条；0 表示全部")
 	out := flags.String("out", "-", "JSON 输出文件；- 表示标准输出")
 	timeout := flags.Duration("timeout", 15*time.Minute, "整个评测的超时时间")
@@ -47,7 +48,7 @@ func run(args []string, stdout io.Writer) error {
 		return errors.New("-limit 不能为负数，-out 不能为空，-timeout 必须大于零")
 	}
 
-	cases, err := loadSuite(*suite)
+	cases, groups, err := loadSuite(*suite)
 	if err != nil {
 		return fmt.Errorf("加载评测集失败：%w", err)
 	}
@@ -55,11 +56,11 @@ func run(args []string, stdout io.Writer) error {
 	if *limit > 0 && *limit < len(cases) {
 		selected = cases[:*limit]
 	}
-	scope, err := describeScope(*suite, len(cases), selected)
+	scope, err := describeScope(*suite, len(cases), selected, groups)
 	if err != nil {
 		return errors.New("评测范围指纹生成失败")
 	}
-	setHash, err := suiteHash(scope, cases)
+	setHash, err := suiteHash(scope, cases, groups)
 	if err != nil {
 		return errors.New("全量评测集指纹生成失败")
 	}
@@ -76,7 +77,8 @@ func run(args []string, stdout io.Writer) error {
 
 	// 用户可以配置模型名；这里也遮盖误填进模型名的密钥。
 	modelName := strings.ReplaceAll(model.Model, model.Key, "[REDACTED]")
-	result := output{Model: modelName, PromptVersion: agent.PromptVersion, EvalSetHash: setHash, Scope: scope, Report: report}
+	result := output{Model: modelName, PromptVersion: agent.PromptVersion, EvalSetHash: setHash, Scope: scope, Report: report,
+		BoundaryGroups: summarizeBoundary(report.Items, groups)}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return errors.New("报告编码失败")

@@ -12,7 +12,7 @@ import (
 )
 
 func TestCompareFullReports(t *testing.T) {
-	cases, err := loadSuite("dev")
+	cases, _, err := loadSuite("dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +76,12 @@ func TestCompareFullReports(t *testing.T) {
 }
 
 func TestCompareRefusesMatchingPartialReports(t *testing.T) {
-	cases, err := loadSuite("dev")
+	cases, _, err := loadSuite("dev")
 	if err != nil {
 		t.Fatal(err)
 	}
 	report := correctReport(t, "dev", cases[:2])
-	report.Scope, err = describeScope("dev", len(cases), cases[:2])
+	report.Scope, err = describeScope("dev", len(cases), cases[:2], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestCompareRefusesMatchingPartialReports(t *testing.T) {
 
 func correctReport(t *testing.T, suite string, cases []agent.EvalCase) output {
 	t.Helper()
-	scope, err := describeScope(suite, len(cases), cases)
+	scope, err := describeScope(suite, len(cases), cases, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,20 +18,40 @@ type evalScope struct {
 	Complete     bool   `json:"complete"`
 }
 
-func loadSuite(name string) ([]agent.EvalCase, error) {
+func loadSuite(name string) ([]agent.EvalCase, map[string]string, error) {
 	switch name {
 	case "dev":
-		return agent.LoadEvalCases()
+		cases, err := agent.LoadEvalCases()
+		return cases, nil, err
 	case "holdout":
-		return agent.LoadHoldoutCases()
+		cases, err := agent.LoadHoldoutCases()
+		return cases, nil, err
+	case "boundary":
+		return agent.LoadBoundaryCases()
 	default:
-		return nil, errors.New("-suite 只支持 dev 或 holdout")
+		return nil, nil, errors.New("-suite 只支持 dev、holdout 或 boundary")
 	}
 }
 
-func describeScope(suite string, available int, cases []agent.EvalCase) (evalScope, error) {
+func describeScope(suite string, available int, cases []agent.EvalCase, groups map[string]string) (evalScope, error) {
 	// 指纹基于有序样例内容，与 JSON 文件的换行、缩进无关。
-	data, err := json.Marshal(cases)
+	var content any = cases
+	if len(groups) != 0 {
+		type groupedCase struct {
+			Group string         `json:"group"`
+			Case  agent.EvalCase `json:"case"`
+		}
+		grouped := make([]groupedCase, 0, len(cases))
+		for _, item := range cases {
+			group := groups[item.ID]
+			if group == "" {
+				return evalScope{}, errors.New("边界样例缺少分组")
+			}
+			grouped = append(grouped, groupedCase{Group: group, Case: item})
+		}
+		content = grouped
+	}
+	data, err := json.Marshal(content)
 	if err != nil {
 		return evalScope{}, err
 	}
@@ -41,7 +61,7 @@ func describeScope(suite string, available int, cases []agent.EvalCase) (evalSco
 	}, nil
 }
 
-func suiteHash(scope evalScope, cases []agent.EvalCase) (string, error) {
+func suiteHash(scope evalScope, cases []agent.EvalCase, groups map[string]string) (string, error) {
 	// 保留开发集旧指纹，供已有报告核对原始题集文件。
 	if scope.Suite == "dev" {
 		return agent.EvalSetHash(), nil
@@ -49,6 +69,6 @@ func suiteHash(scope evalScope, cases []agent.EvalCase) (string, error) {
 	if scope.Complete {
 		return scope.SelectedHash, nil
 	}
-	full, err := describeScope(scope.Suite, len(cases), cases)
+	full, err := describeScope(scope.Suite, len(cases), cases, groups)
 	return full.SelectedHash, err
 }

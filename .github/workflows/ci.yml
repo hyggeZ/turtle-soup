@@ -44,11 +44,11 @@ jobs:
           go test -mod=readonly -count=1 -p=1 ./...
       - name: Go 静态检查
         run: go vet -mod=readonly ./...
-      - name: 验证 AI 评测命令的质量门槛
+      - name: 验证 AI 评测命令和边界回归
         run: |
           binary="$RUNNER_TEMP/ai-eval"
           go build -mod=readonly -o "$binary" ./cmd/ai-eval
-          AI_EVAL_BINARY="$binary" go test -mod=readonly -count=1 -v -run '^TestAIEvalCLIQualityGate$' ./cmd/ai-eval
+          AI_EVAL_BINARY="$binary" go test -mod=readonly -count=1 -v -run '^TestAIEval(CLIQualityGate|BoundaryCLI)$' ./cmd/ai-eval
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22

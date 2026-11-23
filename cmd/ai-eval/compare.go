@@ -11,17 +11,18 @@ import (
 )
 
 type evalScore struct {
-	Model            string               `json:"model"`
-	PromptVersion    string               `json:"promptVersion"`
-	Correct          int                  `json:"correct"`
-	Errors           int                  `json:"errors"`
-	FalseCorrect     int                  `json:"falseCorrect"`
-	CorrectRestores  int                  `json:"correctRestores"`
-	PromptTokens     int                  `json:"promptTokens"`
-	CompletionTokens int                  `json:"completionTokens"`
-	LatencyP95MS     float64              `json:"latencyP95Ms"`
-	QuestionF1       agent.ClassF1Summary `json:"questionF1"`
-	RestoreF1        agent.ClassF1Summary `json:"restoreF1"`
+	Model            string                `json:"model"`
+	PromptVersion    string                `json:"promptVersion"`
+	Correct          int                   `json:"correct"`
+	Errors           int                   `json:"errors"`
+	FalseCorrect     int                   `json:"falseCorrect"`
+	CorrectRestores  int                   `json:"correctRestores"`
+	PromptTokens     int                   `json:"promptTokens"`
+	CompletionTokens int                   `json:"completionTokens"`
+	LatencyP95MS     float64               `json:"latencyP95Ms"`
+	QuestionF1       agent.ClassF1Summary  `json:"questionF1"`
+	RestoreF1        agent.ClassF1Summary  `json:"restoreF1"`
+	BoundaryGroups   []boundaryGroupReport `json:"boundaryGroups,omitempty"`
 }
 
 // compare 只读两份报告，无需密钥或重新请求模型。
@@ -40,11 +41,11 @@ func runCompare(args []string, stdout io.Writer) error {
 	if !base.Scope.Complete || base.Scope != next.Scope {
 		return errors.New("需要同一题集和指纹的两份全量报告")
 	}
-	cases, err := loadSuite(base.Scope.Suite)
+	cases, groups, err := loadSuite(base.Scope.Suite)
 	if err != nil {
 		return err
 	}
-	full, err := describeScope(base.Scope.Suite, len(cases), cases)
+	full, err := describeScope(base.Scope.Suite, len(cases), cases, groups)
 	if err != nil || full != base.Scope {
 		return errors.New("报告范围与本版本的全量题集不一致")
 	}
@@ -58,6 +59,8 @@ func runCompare(args []string, stdout io.Writer) error {
 	}
 	oldScore.Model, oldScore.PromptVersion = base.Model, base.PromptVersion
 	newScore.Model, newScore.PromptVersion = next.Model, next.PromptVersion
+	oldScore.BoundaryGroups = summarizeBoundary(base.Report.Items, groups)
+	newScore.BoundaryGroups = summarizeBoundary(next.Report.Items, groups)
 	issues := make([]string, 0, 4)
 	if newScore.Errors > oldScore.Errors {
 		issues = append(issues, "调用失败数增加")
@@ -71,6 +74,7 @@ func runCompare(args []string, stdout io.Writer) error {
 	if newScore.Correct < oldScore.Correct {
 		issues = append(issues, "命中人工标签的总数减少")
 	}
+	issues = appendBoundaryIssues(issues, oldScore.BoundaryGroups, newScore.BoundaryGroups)
 	result := struct {
 		Scope           evalScope `json:"scope"`
 		Baseline        evalScore `json:"baseline"`

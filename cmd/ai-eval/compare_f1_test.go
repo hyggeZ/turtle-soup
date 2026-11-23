@@ -8,7 +8,7 @@ import (
 )
 
 func TestCompareRecomputesF1FromDecisions(t *testing.T) {
-	cases, err := loadSuite("holdout")
+	cases, _, err := loadSuite("holdout")
 	if err != nil {
 		t.Fatal(err)
 	}

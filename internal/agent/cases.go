@@ -51,11 +51,7 @@ func LoadEvalCases() ([]EvalCase, error) {
 	if err := json.Unmarshal(restoreEvalData, &groups); err != nil {
 		return nil, fmt.Errorf("还原评测集无效: %w", err)
 	}
-	var boundaries []boundaryGroup
-	if err := json.Unmarshal(boundaryEvalData, &boundaries); err != nil {
-		return nil, fmt.Errorf("边界评测集无效: %w", err)
-	}
-	if len(cases) < 8 || len(groups) < 20 || len(boundaries) < 4 {
+	if len(cases) < 8 || len(groups) < 20 {
 		return nil, errors.New("评测集样例数量不足")
 	}
 	ids := make(map[string]bool, len(cases)+len(groups)*5)
@@ -85,21 +81,44 @@ func LoadEvalCases() ([]EvalCase, error) {
 			return nil, fmt.Errorf("还原题目缺少判定类别: %s", group.ID)
 		}
 	}
+	boundaries, _, err := loadBoundaryCases(ids, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	return append(cases, boundaries...), nil
+}
+
+// LoadBoundaryCases 返回独立的边界切片和样例 ID 到原始故事分组的映射。
+func LoadBoundaryCases() ([]EvalCase, map[string]string, error) {
+	return loadBoundaryCases(make(map[string]bool), make(map[string]bool))
+}
+
+func loadBoundaryCases(ids, groupIDs map[string]bool) ([]EvalCase, map[string]string, error) {
+	var boundaries []boundaryGroup
+	if err := json.Unmarshal(boundaryEvalData, &boundaries); err != nil {
+		return nil, nil, fmt.Errorf("边界评测集无效: %w", err)
+	}
+	if len(boundaries) < 4 {
+		return nil, nil, errors.New("评测集样例数量不足")
+	}
+	cases := make([]EvalCase, 0, len(boundaries)*9)
+	byID := make(map[string]string, cap(cases))
 	for _, group := range boundaries {
 		if group.ID == "" || groupIDs[group.ID] || group.Soup.Title == "" || group.Soup.Surface == "" || group.Soup.Answer == "" || len(group.Cases) < 9 {
-			return nil, fmt.Errorf("边界题目无效或重复: %s", group.ID)
+			return nil, nil, fmt.Errorf("边界题目无效或重复: %s", group.ID)
 		}
 		groupIDs[group.ID] = true
 		for _, item := range group.Cases {
 			sample := EvalCase{ID: item.ID, Soup: group.Soup, History: item.History, Kind: item.Kind, Input: item.Input, Expected: item.Expected}
 			if !validEvalCase(sample) || ids[item.ID] {
-				return nil, fmt.Errorf("边界样例无效或重复: %s", item.ID)
+				return nil, nil, fmt.Errorf("边界样例无效或重复: %s", item.ID)
 			}
 			ids[item.ID] = true
+			byID[item.ID] = group.ID
 			cases = append(cases, sample)
 		}
 	}
-	return cases, nil
+	return cases, byID, nil
 }
 
 func validEvalCase(sample EvalCase) bool {
