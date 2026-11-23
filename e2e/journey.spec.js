@@ -55,6 +55,12 @@ async function askInRoom(page, question) {
   await page.getByRole('button', { name: '提问', exact: true }).click()
 }
 
+function memberStatus(page, username, status) {
+  return page.getByRole('region', { name: '房间成员' }).getByRole('listitem')
+    .filter({ has: page.getByText(username, { exact: true }) })
+    .getByText(status, { exact: true })
+}
+
 test('注册、发题、多人重连、AI 主持和后台审核', async ({ actors }) => {
   test.setTimeout(60_000)
   const { author, player, solo, admin } = actors
@@ -115,6 +121,8 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
     await player.getByRole('button', { name: /^加入房间/ }).click()
     await expect(player.getByRole('heading', { name: '共探房间' })).toBeVisible()
     await expect(player.getByText('实时连接正常')).toBeVisible()
+    await expect(memberStatus(player, names.author, '在线')).toBeVisible()
+    await expect(memberStatus(author, names.player, '在线')).toBeVisible()
     await author.getByRole('button', { name: /^开始游戏/ }).click()
 
     await askInRoom(player, firstQuestion)
@@ -127,12 +135,14 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
     await author.goto('about:blank')
     const paused = player.getByRole('heading', { name: '对局已暂停' })
     await expect(paused).toBeVisible({ timeout: 15_000 })
+    await expect(memberStatus(player, names.author, '离线')).toBeVisible()
     await expect(player.getByRole('button', { name: '提问', exact: true })).toHaveCount(0)
 
     await author.goto('/')
     await expect(author.getByRole('heading', { name: '共探房间' })).toBeVisible()
     await expect(author.getByText('实时连接正常')).toBeVisible()
     await expect(paused).toHaveCount(0)
+    await expect(memberStatus(player, names.author, '在线')).toBeVisible()
     const records = player.getByRole('region', { name: '对局记录' })
     await expect(records.getByText(firstQuestion)).toHaveCount(1)
     await askInRoom(player, nextQuestion)

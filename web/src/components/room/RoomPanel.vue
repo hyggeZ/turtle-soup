@@ -481,7 +481,7 @@ watch(() => ['active', 'paused'].includes(room.value?.status) && room.value?.myR
       <template v-if="room">
         <div class="play-room-grid">
           <div class="play-room-left">
-            <RoomMembers :room="room" :player-count="playerCount" />
+            <RoomMembers :room="room" :player-count="playerCount" :connected-user-id="connected ? user?.id : undefined" />
             <article class="play-paper play-case-card room-skin">
               <div class="play-case-head"><span class="play-case-tab room-skin room-skin-claret">汤面</span></div>
               <div class="play-case-content">

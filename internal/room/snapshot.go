@@ -10,6 +10,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type roomSnapshotMember struct {
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	Correct     bool   `json:"correct"`
+	HostRequest bool   `json:"hostRequest"`
+	Online      bool   `json:"online"`
+}
+
 // snapshot 只向成员展示其角色允许看到的事件内容。
 func (h *Handler) get(c *gin.Context) {
 	queryParams := c.Request.URL.Query()
@@ -102,22 +111,20 @@ func (h *Handler) get(c *gin.Context) {
 		c.JSON(409, gin.H{"error": "当前房间不支持历史翻页"})
 		return
 	}
-	members := make([]gin.H, 0)
+	members := make([]roomSnapshotMember, 0)
 	rows, e := tx.Query(ctx, `SELECT m.user_id,u.username,m.role,m.correct,m.host_request FROM room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=$1 ORDER BY m.joined_at,m.user_id`, id)
 	if e != nil {
 		fail(c, e)
 		return
 	}
 	for rows.Next() {
-		var uid int64
-		var name, r string
-		var correct, req bool
-		if rows.Scan(&uid, &name, &r, &correct, &req) != nil {
+		var member roomSnapshotMember
+		if rows.Scan(&member.ID, &member.Username, &member.Role, &member.Correct, &member.HostRequest) != nil {
 			rows.Close()
 			fail(c, errors.New("scan"))
 			return
 		}
-		members = append(members, gin.H{"id": uid, "username": name, "role": r, "correct": correct, "hostRequest": req})
+		members = append(members, member)
 	}
 	if e := rows.Err(); e != nil {
 		rows.Close()
@@ -163,6 +170,13 @@ func (h *Handler) get(c *gin.Context) {
 	if e := tx.Commit(ctx); e != nil {
 		fail(c, e)
 		return
+	}
+	var online map[int64]int
+	if status != "finished" && status != "closed" {
+		online = h.liveHub.onlineUsers(id)
+	}
+	for i := range members {
+		members[i].Online = online[members[i].ID] > 0
 	}
 	response := gin.H{"id": id, "code": code, "mode": mode, "status": status, "ownerId": owner, "hostId": host, "soupId": soupID, "maxPlayers": max, "public": public, "turnUserId": turn, "turnDeadline": deadline, "serverTime": time.Now().UTC(), "winnerId": winner, "title": title, "surface": surface, "genre": genre, "difficulty": difficulty, "horror": horror, "answerPublished": answerPublished, "answer": answer, "myRole": role, "members": members, "events": events, "eventCursor": cursor}
 	if pagedHistory {

@@ -49,25 +49,30 @@ func (h *Handler) liveWithTicks(c *gin.Context, ticks <-chan time.Time) {
 	}
 	conn, err := websocket.Accept(c.Writer, c.Request, nil)
 	if err != nil {
-		if h.liveHub.leave(id, updates) {
-			h.pauseIfHost(id, user.ID)
-		}
+		h.liveHub.leave(id, updates)
 		return
 	}
 	defer conn.CloseNow()
 	conn.SetReadLimit(1024)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	if !h.liveHub.activate(id, updates, cancel) {
+	activated, first := h.liveHub.activate(id, updates, cancel)
+	if !activated {
 		return
 	}
 	closed := conn.CloseRead(ctx)
 	defer func() {
 		if h.liveHub.leave(id, updates) {
 			h.pauseIfHost(id, user.ID)
+			h.liveHub.notify(id)
 		}
 	}()
-	h.resumeIfHost(id, user.ID)
+	if h.resumeIfHost(id, user.ID) {
+		h.liveHub.notify(id)
+	} else if first {
+		// 新连接已经会在打开时读取快照，只提醒其他连接。
+		h.liveHub.notifyExcept(id, updates)
+	}
 	for {
 		select {
 		case <-closed.Done():
@@ -148,7 +153,9 @@ func (h *Handler) admitLive(c *gin.Context, id, user int64) (chan struct{}, chan
 	if hostID != nil {
 		currentHost = *hostID
 	}
-	h.liveHub.changeHost(id, currentHost)
+	if h.liveHub.changeHost(id, currentHost) {
+		h.liveHub.notify(id)
+	}
 	kind := livePlayer
 	if currentHost == user {
 		kind = liveHost
@@ -189,20 +196,14 @@ func (h *Handler) pauseIfHost(room, user int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	tag, err := h.db.Exec(ctx, `UPDATE rooms SET status='paused',paused_at=NOW() WHERE id=$1 AND host_id=$2 AND status='active'`, room, user)
-	if err == nil && tag.RowsAffected() > 0 {
-		if h.liveHub.hasUser(room, user) {
-			h.resumeIfHost(room, user)
-			return
-		}
-		h.liveHub.notify(room)
+	if err == nil && tag.RowsAffected() > 0 && h.liveHub.hasUser(room, user) {
+		h.resumeIfHost(room, user)
 	}
 }
 
-func (h *Handler) resumeIfHost(room, user int64) {
+func (h *Handler) resumeIfHost(room, user int64) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	tag, err := h.db.Exec(ctx, `UPDATE rooms SET status='active',turn_deadline=turn_deadline+(NOW()-paused_at),paused_at=NULL WHERE id=$1 AND host_id=$2 AND status='paused' AND paused_at IS NOT NULL`, room, user)
-	if err == nil && tag.RowsAffected() > 0 {
-		h.liveHub.notify(room)
-	}
+	return err == nil && tag.RowsAffected() > 0
 }

@@ -152,13 +152,14 @@
       },
       "RoomMember": {
         "type": "object",
-        "required": ["id", "username", "role", "correct", "hostRequest"],
+        "required": ["id", "username", "role", "correct", "hostRequest", "online"],
         "properties": {
           "id": { "$ref": "#/components/schemas/ID" },
           "username": { "type": "string" },
           "role": { "$ref": "#/components/schemas/RoomRole" },
           "correct": { "type": "boolean" },
-          "hostRequest": { "type": "boolean" }
+          "hostRequest": { "type": "boolean" },
+          "online": { "type": "boolean", "description": "成员在当前服务进程内至少有一条已建立的房间 WebSocket。房间结束或关闭时为 false。" }
         }
       },
       "RoomEvent": {

@@ -166,7 +166,7 @@ func TestEvictedPendingConnectionCannotActivate(t *testing.T) {
 	default:
 		t.Fatal("旧主持待升级连接未被驱逐")
 	}
-	if hub.activate(7, updates, nil) || liveTotal(hub) != 0 || hub.hasUser(7, 10) {
+	if activated, _ := hub.activate(7, updates, nil); activated || liveTotal(hub) != 0 || hub.hasUser(7, 10) {
 		t.Fatal("已驱逐的待升级连接被错误激活或占用名额")
 	}
 }

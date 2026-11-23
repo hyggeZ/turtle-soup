@@ -2,6 +2,7 @@ package room
 
 import (
 	"context"
+	"maps"
 	"sync"
 )
 
@@ -113,15 +114,15 @@ func (h *liveHub) join(room, user int64, kind liveKind) (chan struct{}, chan str
 }
 
 // 握手完成后才算在线；预留名额不能让主持人提前开局。
-func (h *liveHub) activate(room int64, updates chan struct{}, cancel context.CancelFunc) bool {
+func (h *liveHub) activate(room int64, updates chan struct{}, cancel context.CancelFunc) (ok, first bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	viewer, exists := h.viewers[room][updates]
 	if !exists {
-		return false
+		return false, false
 	}
 	if viewer.active {
-		return true
+		return true, false
 	}
 	viewer.active = true
 	viewer.cancel = cancel
@@ -130,7 +131,7 @@ func (h *liveHub) activate(room int64, updates chan struct{}, cancel context.Can
 		h.online[room] = make(map[int64]int)
 	}
 	h.online[room][viewer.user]++
-	return true
+	return true, h.online[room][viewer.user] == 1
 }
 
 func (h *liveHub) leave(room int64, updates chan struct{}) bool {
@@ -183,12 +184,15 @@ func (h *liveHub) leaveLocked(room int64, updates chan struct{}) bool {
 }
 
 // 换主持后释放前任连接占用的保留名额，现任已连接设备直接改计为主持。
-func (h *liveHub) changeHost(room, newHost int64) {
+func (h *liveHub) changeHost(room, newHost int64) bool {
 	h.mu.Lock()
 	var cancels []context.CancelFunc
+	presenceChanged := false
 	for updates, viewer := range h.viewers[room] {
 		if viewer.kind == liveHost && viewer.user != newHost {
-			h.leaveLocked(room, updates)
+			if h.leaveLocked(room, updates) {
+				presenceChanged = true
+			}
 			close(viewer.evict)
 			if viewer.cancel != nil {
 				cancels = append(cancels, viewer.cancel)
@@ -211,17 +215,32 @@ func (h *liveHub) changeHost(room, newHost int64) {
 	for _, cancel := range cancels {
 		cancel()
 	}
+	return presenceChanged
 }
 
 func (h *liveHub) notify(room int64) {
+	h.notifyExcept(room, nil)
+}
+
+func (h *liveHub) notifyExcept(room int64, except chan struct{}) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for updates := range h.viewers[room] {
+		if updates == except {
+			continue
+		}
 		select {
 		case updates <- struct{}{}:
 		default:
 		}
 	}
+}
+
+// 复制在线表，快照批量填充成员时无需重复持锁。
+func (h *liveHub) onlineUsers(room int64) map[int64]int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return maps.Clone(h.online[room])
 }
 
 func (h *liveHub) hasUser(room, user int64) bool {
