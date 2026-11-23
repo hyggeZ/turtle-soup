@@ -11,18 +11,20 @@ import (
 )
 
 type evalScore struct {
-	Model            string                `json:"model"`
-	PromptVersion    string                `json:"promptVersion"`
-	Correct          int                   `json:"correct"`
-	Errors           int                   `json:"errors"`
-	FalseCorrect     int                   `json:"falseCorrect"`
-	CorrectRestores  int                   `json:"correctRestores"`
-	PromptTokens     int                   `json:"promptTokens"`
-	CompletionTokens int                   `json:"completionTokens"`
-	LatencyP95MS     float64               `json:"latencyP95Ms"`
-	QuestionF1       agent.ClassF1Summary  `json:"questionF1"`
-	RestoreF1        agent.ClassF1Summary  `json:"restoreF1"`
-	BoundaryGroups   []boundaryGroupReport `json:"boundaryGroups,omitempty"`
+	Model             string                `json:"model"`
+	PromptVersion     string                `json:"promptVersion"`
+	Correct           int                   `json:"correct"`
+	Errors            int                   `json:"errors"`
+	FalseCorrect      int                   `json:"falseCorrect"`
+	CorrectRestores   int                   `json:"correctRestores"`
+	PromptTokens      int                   `json:"promptTokens"`
+	CompletionTokens  int                   `json:"completionTokens"`
+	LatencyP95MS      float64               `json:"latencyP95Ms"`
+	QuestionF1        agent.ClassF1Summary  `json:"questionF1"`
+	RestoreF1         agent.ClassF1Summary  `json:"restoreF1"`
+	QuestionConfusion agent.ConfusionMatrix `json:"questionConfusion"`
+	RestoreConfusion  agent.ConfusionMatrix `json:"restoreConfusion"`
+	BoundaryGroups    []boundaryGroupReport `json:"boundaryGroups,omitempty"`
 }
 
 // compare 只读两份报告，无需密钥或重新请求模型。
@@ -76,18 +78,22 @@ func runCompare(args []string, stdout io.Writer) error {
 	}
 	issues = appendBoundaryIssues(issues, oldScore.BoundaryGroups, newScore.BoundaryGroups)
 	result := struct {
-		Scope           evalScope `json:"scope"`
-		Baseline        evalScore `json:"baseline"`
-		Candidate       evalScore `json:"candidate"`
-		QuestionF1Delta f1Delta   `json:"questionF1Delta"`
-		RestoreF1Delta  f1Delta   `json:"restoreF1Delta"`
-		Passed          bool      `json:"passed"`
-		Issues          []string  `json:"issues"`
+		Scope                  evalScope             `json:"scope"`
+		Baseline               evalScore             `json:"baseline"`
+		Candidate              evalScore             `json:"candidate"`
+		QuestionF1Delta        f1Delta               `json:"questionF1Delta"`
+		RestoreF1Delta         f1Delta               `json:"restoreF1Delta"`
+		QuestionConfusionDelta agent.ConfusionMatrix `json:"questionConfusionDelta"`
+		RestoreConfusionDelta  agent.ConfusionMatrix `json:"restoreConfusionDelta"`
+		Passed                 bool                  `json:"passed"`
+		Issues                 []string              `json:"issues"`
 	}{
 		Scope: full, Baseline: oldScore, Candidate: newScore,
-		QuestionF1Delta: compareF1(oldScore.QuestionF1, newScore.QuestionF1),
-		RestoreF1Delta:  compareF1(oldScore.RestoreF1, newScore.RestoreF1),
-		Passed:          len(issues) == 0, Issues: issues,
+		QuestionF1Delta:        compareF1(oldScore.QuestionF1, newScore.QuestionF1),
+		RestoreF1Delta:         compareF1(oldScore.RestoreF1, newScore.RestoreF1),
+		QuestionConfusionDelta: differenceMatrix(oldScore.QuestionConfusion, newScore.QuestionConfusion),
+		RestoreConfusionDelta:  differenceMatrix(oldScore.RestoreConfusion, newScore.RestoreConfusion),
+		Passed:                 len(issues) == 0, Issues: issues,
 	}
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
@@ -152,9 +158,22 @@ func scoreReport(report agent.EvalReport, cases []agent.EvalCase) (evalScore, er
 	if questions == 0 || correctRestores == 0 || otherRestores == 0 {
 		return evalScore{}, errors.New("问答、正确还原、非正确还原均需要有效判定")
 	}
-	// 历史报告没有 F1 字段也能比较，逐例标签已按同一题集核实。
+	// 旧报告也能比较，分类汇总只使用已核对的逐例结果。
 	score.QuestionF1, score.RestoreF1 = agent.ClassificationF1(report.Items)
+	score.QuestionConfusion, score.RestoreConfusion = agent.ClassificationConfusion(report.Items)
 	return score, nil
+}
+
+// 行列标签由评测程序固定，差值表示候选较基线增加或减少的预测次数。
+func differenceMatrix(base, next agent.ConfusionMatrix) agent.ConfusionMatrix {
+	delta := agent.ConfusionMatrix{Labels: next.Labels, Counts: make([][]int, len(next.Counts))}
+	for row, counts := range next.Counts {
+		delta.Counts[row] = make([]int, len(counts))
+		for column, count := range counts {
+			delta.Counts[row][column] = count - base.Counts[row][column]
+		}
+	}
+	return delta
 }
 
 func validOutcome(item agent.EvalItem) bool {

@@ -79,6 +79,27 @@ func newConfusion(labels ...string) ConfusionMatrix {
 	return matrix
 }
 
+func questionConfusion() ConfusionMatrix { return newConfusion("是", "否", "无关") }
+
+func restoreConfusion() ConfusionMatrix { return newConfusion("正确", "不完整", "错误") }
+
+// ClassificationConfusion 从逐例判定重算模型的预测流向，调用失败由错误数单独统计。
+func ClassificationConfusion(items []EvalItem) (question ConfusionMatrix, restore ConfusionMatrix) {
+	question, restore = questionConfusion(), restoreConfusion()
+	for _, item := range items {
+		if item.Error != "" {
+			continue
+		}
+		switch item.Kind {
+		case "question":
+			question.add(item.Expected, item.Actual)
+		case "restore":
+			restore.add(item.Expected, item.Actual)
+		}
+	}
+	return question, restore
+}
+
 func (m *ConfusionMatrix) add(expected, actual string) {
 	row, column := -1, -1
 	for i, label := range m.Labels {
@@ -125,8 +146,8 @@ func evalError(err error) string {
 func Evaluate(ctx context.Context, decider Decider, cases []EvalCase) EvalReport {
 	report := EvalReport{
 		Total: len(cases), Items: make([]EvalItem, 0, len(cases)),
-		QuestionConfusion: newConfusion("是", "否", "无关"),
-		RestoreConfusion:  newConfusion("正确", "不完整", "错误"),
+		QuestionConfusion: questionConfusion(),
+		RestoreConfusion:  restoreConfusion(),
 	}
 	var latencies, promptTokens, completionTokens, totalTokens []float64
 	for _, sample := range cases {
