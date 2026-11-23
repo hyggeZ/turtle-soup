@@ -75,7 +75,8 @@
   border-image: var(--ticket-skin) var(--ticket-slice, 13%) fill stretch;
 }
 .game-home-link { --ticket-skin: url('../assets/ticket-paper.webp'); }
-.game-home-account .game-home-link { transform: rotate(-4deg); }
+/* 文案、间距和内边距都需要预留，账号状态返回后按钮位置才不变。 */
+.game-home-account .game-home-link { min-inline-size: calc(6em + 48px); justify-content: center; transform: rotate(-4deg); }
 .game-home .game-home-write { min-height: 60px; font-size: clamp(19px, 2.2vw, 30px); transform: rotate(-4deg); }
 .game-home .game-home-admin { --ticket-skin: url('../assets/ticket-rust.webp'); color: #ffdfb3; transform: rotate(3deg); }
 .game-home-link:hover { filter: brightness(1.08) drop-shadow(2px 4px 1px #120b16db); }
@@ -175,6 +176,11 @@
 .game-route-enter::before { filter: drop-shadow(1px 3px 0 #2d161bcc); }
 .game-route-enter b { font-size: 1.18em; }
 
+@media (width > 920px) {
+  /* 后台入口出现时不挤动发布按钮，发布入口仍在原有位置。 */
+  .game-home .game-home-admin { position: absolute; right: 0; bottom: calc(100% + 16px); }
+}
+
 @media (max-width: 920px) {
   .game-home { background-position: 82% center; }
   .game-home-inner { background: linear-gradient(90deg, #16132172, transparent 94%); }
@@ -200,6 +206,7 @@
   .game-brand .game-turtle-mark::after { left: auto; right: -9px; }
   .game-home-account { top: 23px; right: 13px; }
   .game-home .game-home-link { min-height: 42px; padding: 5px 13px; font-size: 15px; }
+  .game-home-account .game-home-link { min-inline-size: calc(6em + 34px); }
   .game-route-stack { margin-top: auto; padding-top: clamp(37px, 13svh, 110px); }
   .game-home .game-route { --ticket-tilt: -1.5deg; min-height: 105px; padding-right: 4%; }
   .game-route-copy { gap: 3px; }
