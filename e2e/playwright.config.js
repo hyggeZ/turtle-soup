@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
-  testMatch: ['journey.spec.js', 'room-offline.spec.js', 'accessibility.spec.js'],
+  testMatch: ['journey.spec.js', 'room-offline.spec.js', 'accessibility.spec.js', 'trace-failure.spec.js'],
   workers: 1,
   retries: 0,
   reporter: [['list', { printSteps: true }]],

@@ -49,6 +49,8 @@ const latestStages = computed(() => {
   return stages
 })
 const aiTrace = computed(() => selected.value?.spans?.some(span => span.name.startsWith('ai.')) || false)
+// 服务端在阶段完成时追加记录。时间线另按开始时间排序，首个失败保留原记录顺序。
+const firstFailure = computed(() => selected.value?.spans?.find(span => span.failed))
 const traceSpans = computed(() => [...(selected.value?.spans || [])]
   .sort((a, b) => Number(a.startMs || 0) - Number(b.startMs || 0)))
 const hasOffsets = computed(() => traceSpans.value.some(span => span.startMs !== undefined))
@@ -188,9 +190,11 @@ onMounted(load)
           <div class="trace-route"><strong>{{ selected.method }} {{ selected.route }}</strong><span class="status" :class="{ hidden: selected.status >= 400 }"><i aria-hidden="true"></i>{{ selected.status }}</span></div>
           <p class="trace-id">Trace ID&nbsp; {{ selected.traceId }}</p>
           <div class="trace-total"><span>总耗时</span><strong>{{ number(selected.durationMs) }} <small>ms</small></strong></div>
+          <p v-if="firstFailure" class="trace-route"><span>首个记录到的失败阶段</span><strong>{{ stageName(firstFailure.name) }}</strong></p>
+          <p v-else-if="selected.status >= 400" class="subtle-note">本次请求未记录失败阶段。</p>
           <div v-if="traceSpans.length" class="trace-timeline" role="region" aria-label="阶段时间线">
             <div v-for="(span, index) in traceSpans" :key="index" class="trace-span" :class="{ 'trace-span-failed': span.failed }">
-              <span class="trace-span-name" :title="span.name">{{ stageName(span.name) }} <em v-if="span.failed">失败</em><small>{{ span.name }}</small></span>
+              <span class="trace-span-name" :title="span.name">{{ stageName(span.name) }} <em v-if="span.failed">{{ span === firstFailure ? '首个失败' : '失败' }}</em><small>{{ span.name }}</small></span>
               <span class="trace-span-offset">{{ span.startMs === undefined ? '—' : `+${number(span.startMs)} ms` }}</span>
               <span class="trace-span-track"><i :style="spanStyle(span, selected.durationMs)"></i></span>
               <strong>{{ number(span.durationMs) }} ms</strong>
