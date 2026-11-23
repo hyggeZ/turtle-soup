@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,7 +115,13 @@ func (s *Store) Middleware() gin.HandlerFunc {
 
 // 复用请求和 AI 判定的现有计时，指标标签不取自请求内容。
 func (s *Store) observeRequest(record Record, elapsed time.Duration) {
-	if s.metrics == nil || record.Method != "POST" {
+	if s.metrics == nil {
+		return
+	}
+	if strings.HasPrefix(record.Route, "/api/") {
+		s.metrics.observeAPI(record.Status, record.DBCount)
+	}
+	if record.Method != "POST" {
 		return
 	}
 	switch record.Route {
