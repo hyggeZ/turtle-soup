@@ -73,22 +73,28 @@ func runCompare(args []string, stdout io.Writer) error {
 		issues = append(issues, "命中人工标签的总数减少")
 	}
 	issues = appendBoundaryIssues(issues, oldScore.BoundaryGroups, newScore.BoundaryGroups)
+	var interval *pairedAccuracyInterval
+	if base.Scope.Suite == "holdout" {
+		interval = bootstrapAccuracy(cases, base.Report.Items, next.Report.Items)
+	}
 	result := struct {
-		Scope                  evalScope             `json:"scope"`
-		Baseline               evalScore             `json:"baseline"`
-		Candidate              evalScore             `json:"candidate"`
-		QuestionF1Delta        f1Delta               `json:"questionF1Delta"`
-		RestoreF1Delta         f1Delta               `json:"restoreF1Delta"`
-		QuestionConfusionDelta agent.ConfusionMatrix `json:"questionConfusionDelta"`
-		RestoreConfusionDelta  agent.ConfusionMatrix `json:"restoreConfusionDelta"`
-		Passed                 bool                  `json:"passed"`
-		Issues                 []string              `json:"issues"`
+		Scope                  evalScope               `json:"scope"`
+		Baseline               evalScore               `json:"baseline"`
+		Candidate              evalScore               `json:"candidate"`
+		QuestionF1Delta        f1Delta                 `json:"questionF1Delta"`
+		RestoreF1Delta         f1Delta                 `json:"restoreF1Delta"`
+		QuestionConfusionDelta agent.ConfusionMatrix   `json:"questionConfusionDelta"`
+		RestoreConfusionDelta  agent.ConfusionMatrix   `json:"restoreConfusionDelta"`
+		PairedAccuracyInterval *pairedAccuracyInterval `json:"pairedAccuracyInterval,omitempty"`
+		Passed                 bool                    `json:"passed"`
+		Issues                 []string                `json:"issues"`
 	}{
 		Scope: base.Scope, Baseline: oldScore, Candidate: newScore,
 		QuestionF1Delta:        compareF1(oldScore.QuestionF1, newScore.QuestionF1),
 		RestoreF1Delta:         compareF1(oldScore.RestoreF1, newScore.RestoreF1),
 		QuestionConfusionDelta: differenceMatrix(oldScore.QuestionConfusion, newScore.QuestionConfusion),
 		RestoreConfusionDelta:  differenceMatrix(oldScore.RestoreConfusion, newScore.RestoreConfusion),
+		PairedAccuracyInterval: interval,
 		Passed:                 len(issues) == 0, Issues: issues,
 	}
 	encoder := json.NewEncoder(stdout)
