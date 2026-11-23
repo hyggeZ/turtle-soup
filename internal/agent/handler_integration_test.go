@@ -349,6 +349,58 @@ func TestSoloGameWithPostgres(t *testing.T) {
 	}
 	gameID2 = output.ID
 	actionPath = fmt.Sprintf("/api/ai/solo/%d/actions", gameID2)
+	t.Run("other_account_cannot_change_game", func(t *testing.T) {
+		type gameState struct {
+			status                             string
+			leased, finished                   bool
+			events, attempts, reveals          int
+			ownerUsage, otherUsage, totalUsage int
+			modelCalls                         int32
+		}
+		state := func() gameState {
+			t.Helper()
+			var result gameState
+			err := db.QueryRow(ctx, `SELECT status, busy_op IS NOT NULL OR busy_until IS NOT NULL, finished_at IS NOT NULL,
+				(SELECT count(*) FROM ai_events WHERE game_id=g.id),
+				(SELECT count(*) FROM ai_attempts WHERE game_id=g.id),
+				(SELECT count(*) FROM soup_reveals WHERE soup_id=g.soup_id AND user_id IN ($2,$3)),
+				(SELECT COALESCE(sum(calls),0) FROM ai_daily_usage WHERE user_id=$2),
+				(SELECT COALESCE(sum(calls),0) FROM ai_daily_usage WHERE user_id=$3),
+				(SELECT COALESCE(sum(calls),0) FROM ai_global_usage)
+				FROM ai_games g WHERE g.id=$1`, gameID2, users[1], users[2]).Scan(
+				&result.status, &result.leased, &result.finished, &result.events, &result.attempts, &result.reveals,
+				&result.ownerUsage, &result.otherUsage, &result.totalUsage)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result.modelCalls = decider.calls.Load()
+			return result
+		}
+		before := state()
+		if before.status != "active" || before.leased || before.finished || before.events != 0 || before.attempts != 0 || before.reveals != 0 {
+			t.Fatalf("隔离回归应从一局未操作的活跃对局开始：%+v", before)
+		}
+		for _, in := range []actionInput{
+			{Type: "question", Body: "钟楼的门开着吗？", OperationID: "question_101"},
+			{Type: "reveal", OperationID: "reveal_001"},
+		} {
+			res := call(http.MethodPost, actionPath, in, cookies[2])
+			var data map[string]json.RawMessage
+			if res.Code != http.StatusNotFound || json.Unmarshal(res.Body.Bytes(), &data) != nil ||
+				len(data) != 1 || data["error"] == nil || strings.Contains(res.Body.String(), "第二题汤底") {
+				t.Errorf("非局主的 %s 应只返回 404 错误，实际状态 %d", in.Type, res.Code)
+			}
+			for _, span := range findTrace(res).Spans {
+				switch span.Name {
+				case "ai.model", "ai.attempt", "ai.persist":
+					t.Errorf("被拒绝的 %s 不应进入 %s 阶段", in.Type, span.Name)
+				}
+			}
+			if after := state(); after != before {
+				t.Errorf("非局主的 %s 改变了对局或调用状态：%+v → %+v", in.Type, before, after)
+			}
+		}
+	})
 	if result := action("reveal", "", "reveal_001"); result.Code != http.StatusOK || !strings.Contains(result.Body.String(), "第二题汤底") {
 		t.Fatalf("主动揭底失败：%d %s", result.Code, result.Body.String())
 	}
