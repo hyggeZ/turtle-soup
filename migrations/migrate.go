@@ -62,6 +62,9 @@ var roomEventReplyIndexSQL string
 //go:embed 018_admin_audit_logs.sql
 var adminAuditLogsSQL string
 
+//go:embed 019_soup_edit_version.sql
+var soupEditVersionSQL string
+
 // Apply 只执行尚未应用的脚本；锁避免多进程同时改表。
 func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	tx, err := db.Begin(ctx)
@@ -79,7 +82,7 @@ func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL, aiGlobalUsageSQL, userProfileSQL, roomLifecycleSQL, commentCursorSQL, soupModerationSQL, commentPublishLimitSQL, waitingRoomModerationSQL, roomAnswerParentIndexSQL, roomEventReplyIndexSQL, adminAuditLogsSQL}
+	scripts := []string{authSQL, forumSQL, gameSQL, rolesSQL, gameIntegritySQL, agentSQL, commentsSQL, soupManageSQL, aiGlobalUsageSQL, userProfileSQL, roomLifecycleSQL, commentCursorSQL, soupModerationSQL, commentPublishLimitSQL, waitingRoomModerationSQL, roomAnswerParentIndexSQL, roomEventReplyIndexSQL, adminAuditLogsSQL, soupEditVersionSQL}
 	for i, script := range scripts {
 		version := i + 1
 		var applied bool

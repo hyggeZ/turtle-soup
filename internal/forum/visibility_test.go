@@ -119,7 +119,7 @@ func TestHiddenSoupAuthorVisibilityAndRelations(t *testing.T) {
 	if res := call(http.MethodGet, list, 0, nil); res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"hidden":true`) {
 		t.Fatalf("作者列表未显示隐藏题目：%d %s", res.Code, res.Body.String())
 	}
-	edit := []byte(`{"title":"新标题","surface":"编辑后的完整汤面","answer":"编辑后的完整汤底","genre":"本格","difficulty":2,"horror":1}`)
+	edit := []byte(`{"title":"新标题","surface":"编辑后的完整汤面","answer":"编辑后的完整汤底","genre":"本格","difficulty":2,"horror":1,"version":1}`)
 	if res := call(http.MethodPatch, path, 0, edit); res.Code != http.StatusConflict {
 		t.Fatalf("作者仍能编辑隐藏题目：%d %s", res.Code, res.Body.String())
 	}

@@ -6,6 +6,7 @@ export async function request(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || '请求失败')
     error.status = response.status
+    if (typeof data.code === 'string') error.code = data.code
     throw error
   }
   return data

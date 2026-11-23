@@ -61,7 +61,7 @@ function memberStatus(page, username, status) {
     .getByText(status, { exact: true })
 }
 
-test('注册、发题、多人重连、AI 主持和后台审核', async ({ actors }) => {
+test('注册、发题与编辑、多人重连、AI 主持和后台审核', async ({ actors }) => {
   test.setTimeout(60_000)
   const { author, player, solo, admin } = actors
   const id = randomBytes(5).toString('hex')
@@ -99,6 +99,52 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
     await expect(player.getByRole('heading', { name: title })).toBeVisible()
     await expect(player.getByText(surface, { exact: true })).toBeVisible()
     await expect(player.getByText(answer, { exact: true })).toHaveCount(0)
+  })
+
+  await test.step('两个编辑页只保存一次，另一页保留冲突草稿', async () => {
+    const twin = await author.context().newPage()
+    const updated = `${surface}\n房间内的台灯还亮着。`
+    const draft = `${surface}\n我先保留这段草稿。`
+    const waitForEdit = page => page.waitForResponse(res => res.request().method() === 'PATCH'
+      && /^\/api\/soups\/\d+$/.test(new URL(res.url()).pathname))
+    try {
+      await twin.goto('/')
+      await expect(twin.getByRole('button', { name: '我的主页' })).toBeVisible()
+      await openCommunity(twin)
+      await twin.getByRole('button', { name: title, exact: true }).click()
+
+      await author.getByRole('button', { name: '编辑题目' }).click()
+      await twin.getByRole('button', { name: '编辑题目' }).click()
+      await expect(author.getByLabel('汤面')).toHaveValue(surface)
+      await expect(twin.getByLabel('汤面')).toHaveValue(surface)
+      await author.getByLabel('汤面').fill(updated)
+      await twin.getByLabel('汤面').fill(draft)
+
+      const [saved] = await Promise.all([
+        waitForEdit(author), author.getByRole('button', { name: '保存修改' }).click(),
+      ])
+      expect(saved.ok()).toBe(true)
+      expect((await saved.json()).version).toBe(2)
+      await expect(author.getByText('修改已保存', { exact: true })).toBeVisible()
+
+      const [conflict] = await Promise.all([
+        waitForEdit(twin), twin.getByRole('button', { name: '保存修改' }).click(),
+      ])
+      expect(conflict.status()).toBe(409)
+      expect((await conflict.json()).code).toBe('SOUP_VERSION_CONFLICT')
+      await expect(twin.getByLabel('汤面')).toHaveValue(draft)
+      const current = await twin.request.get(new URL(saved.url()).pathname)
+      expect(await current.json()).toMatchObject({ surface: updated, version: 2 })
+
+      await twin.getByRole('button', { name: '查看最新版本' }).click()
+      await expect(twin.getByRole('region', { name: '最新版本' })).toContainText('房间内的台灯还亮着。')
+      await twin.getByRole('button', { name: '用最新版本替换草稿' }).click()
+      const dialog = twin.getByRole('dialog', { name: '用最新版本替换草稿？' })
+      await dialog.getByRole('button', { name: '保留草稿' }).click()
+      await expect(twin.getByLabel('汤面')).toHaveValue(draft)
+    } finally {
+      await twin.close()
+    }
   })
 
   await test.step('创建共探房，玩家用房间码加入，开局后发送提问', async () => {

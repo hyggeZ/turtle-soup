@@ -109,6 +109,10 @@ func replyError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
+	if errors.Is(err, ErrVersionConflict) {
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "SOUP_VERSION_CONFLICT"})
+		return
+	}
 	ctx.JSON(http.StatusInternalServerError, gin.H{"error": "服务器暂时无法处理请求"})
 }
 
@@ -177,6 +181,10 @@ func (h *Handler) get(ctx *gin.Context) {
 		replyError(ctx, err)
 		return
 	}
+	if item.Version > 0 {
+		// 作者详情含汤底和编辑版本，每次打开编辑器都应读取当前值。
+		ctx.Header("Cache-Control", "private, no-store")
+	}
 	ctx.JSON(http.StatusOK, item)
 }
 
@@ -235,12 +243,24 @@ func (h *Handler) update(ctx *gin.Context) {
 		return
 	}
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 16<<10)
-	var input soupInput
+	var input struct {
+		soupInput
+		Version json.RawMessage `json:"version"`
+	}
 	if ctx.ShouldBindJSON(&input) != nil || !input.valid() {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请检查标题、汤面、汤底及分类评分"})
 		return
 	}
-	item, err := h.store.Update(ctx.Request.Context(), user, id, input.Title, input.Surface, input.Answer, input.Genre, input.Difficulty, input.Horror)
+	if input.Version == nil {
+		ctx.JSON(http.StatusPreconditionRequired, gin.H{"error": "请保留草稿并重新打开编辑器后再保存", "code": "SOUP_VERSION_REQUIRED"})
+		return
+	}
+	var version int64
+	if json.Unmarshal(input.Version, &version) != nil || version < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "题目版本必须是正整数"})
+		return
+	}
+	item, err := h.store.Update(ctx.Request.Context(), user, id, version, input.Title, input.Surface, input.Answer, input.Genre, input.Difficulty, input.Horror)
 	if err != nil {
 		replyError(ctx, err)
 		return

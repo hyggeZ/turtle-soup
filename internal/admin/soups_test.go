@@ -256,11 +256,11 @@ func TestSoupModerationPermissionAndSnapshots(t *testing.T) {
 	if res := s.call(http.MethodPost, "/api/rooms", "user", map[string]any{"soupId": userSoup, "mode": "casual", "maxPlayers": 6, "public": true, "hostSelf": true}); res.Code != http.StatusNotFound {
 		t.Fatalf("隐藏题目仍能建房：%d %s", res.Code, res.Body.String())
 	}
-	edit := map[string]any{"title": "编辑后标题", "surface": "完整的测试汤面", "answer": "完整的测试汤底", "genre": "本格", "difficulty": 2, "horror": 1}
-	if res := s.call(http.MethodPatch, fmt.Sprintf("/api/soups/%d", userSoup), "user", edit); res.Code != http.StatusConflict {
+	edit := map[string]any{"title": "编辑后标题", "surface": "完整的测试汤面", "answer": "完整的测试汤底", "genre": "本格", "difficulty": 2, "horror": 1, "version": 99}
+	if res := s.call(http.MethodPatch, fmt.Sprintf("/api/soups/%d", userSoup), "user", edit); res.Code != http.StatusConflict || !strings.Contains(res.Body.String(), forum.ErrModerated.Error()) {
 		t.Fatalf("隐藏题目编辑未清晰拒绝：%d %s", res.Code, res.Body.String())
 	}
-	_, err = forum.NewStore(s.db).Update(ctx, s.users["user"], userSoup,
+	_, err = forum.NewStore(s.db).Update(ctx, s.users["user"], userSoup, 99,
 		"编辑后标题", "完整的测试汤面", "完整的测试汤底", "本格", 2, 1)
 	if !errors.Is(err, forum.ErrModerated) {
 		t.Fatalf("隐藏题目可被作者编辑：%v", err)

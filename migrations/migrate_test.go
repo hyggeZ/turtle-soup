@@ -54,7 +54,7 @@ func TestApplyFromEmptySchema(t *testing.T) {
 		t.Fatalf("核心表或索引不完整：账号=%q，房间=%q，AI=%q，审计=%q，等待=%q，回答=%q，回复=%q，错误=%v", users, rooms, games, audit, waitingIndex, answerIndex, replyIndex, err)
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 18 {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil || count != 19 {
 		t.Fatalf("迁移版本记录不完整: count=%d err=%v", count, err)
 	}
 }
@@ -142,12 +142,16 @@ func TestApplyFromVersionEight(t *testing.T) {
 	if err := db.QueryRow(ctx, `SELECT COUNT(*), to_regclass('ai_global_usage'),
 		to_regclass('admin_audit_logs'),to_regclass('room_events_answer_parent_idx'),
 		to_regclass('room_events_reply_parent_idx') FROM schema_migrations`).
-		Scan(&count, &table, &audit, &answerIndex, &replyIndex); err != nil || count != 18 || table == "" || audit == "" || answerIndex == "" || replyIndex == "" {
+		Scan(&count, &table, &audit, &answerIndex, &replyIndex); err != nil || count != 19 || table == "" || audit == "" || answerIndex == "" || replyIndex == "" {
 		t.Fatalf("升级结果错误：版本数=%d，新表=%q，审计=%q，回答索引=%q，回复索引=%q，错误=%v", count, table, audit, answerIndex, replyIndex, err)
 	}
 	var events int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM room_events WHERE room_id=$1`, room).Scan(&events); err != nil || events != 2 {
 		t.Fatalf("升级后旧房间问答不完整：events=%d err=%v", events, err)
+	}
+	var version int64
+	if err := db.QueryRow(ctx, `SELECT version FROM soups WHERE id=$1`, soup).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("升级后旧题目版本错误：version=%d err=%v", version, err)
 	}
 	var calls int
 	if err := db.QueryRow(ctx, `SELECT calls FROM ai_global_usage WHERE usage_day=CURRENT_DATE`).Scan(&calls); err != nil || calls != 40 {

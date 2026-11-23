@@ -121,18 +121,21 @@ func TestSoupAuthorManageAndGameSnapshots(t *testing.T) {
 	}
 	soupID = output.ID
 	path := fmt.Sprintf("/api/soups/%d", soupID)
-	if res := call(http.MethodGet, path, nil, nil); res.Code != http.StatusOK || strings.Contains(res.Body.String(), oldAnswer) {
-		t.Fatalf("匿名详情泄露汤底：%d %s", res.Code, res.Body.String())
+	if res := call(http.MethodGet, path, nil, nil); res.Code != http.StatusOK || strings.Contains(res.Body.String(), oldAnswer) || strings.Contains(res.Body.String(), `"version":`) {
+		t.Fatalf("匿名详情返回了作者编辑信息：%d %s", res.Code, res.Body.String())
 	}
-	if res := call(http.MethodGet, path, nil, cookies[1]); res.Code != http.StatusOK || strings.Contains(res.Body.String(), oldAnswer) {
-		t.Fatalf("其他用户详情泄露汤底：%d %s", res.Code, res.Body.String())
+	if res := call(http.MethodGet, path, nil, cookies[1]); res.Code != http.StatusOK || strings.Contains(res.Body.String(), oldAnswer) || strings.Contains(res.Body.String(), `"version":`) {
+		t.Fatalf("其他用户详情返回了作者编辑信息：%d %s", res.Code, res.Body.String())
 	}
-	if res := call(http.MethodGet, path, nil, cookies[0]); res.Code != http.StatusOK || !strings.Contains(res.Body.String(), oldAnswer) {
-		t.Fatalf("作者无法预填汤底：%d %s", res.Code, res.Body.String())
+	var detail forum.Soup
+	if res := call(http.MethodGet, path, nil, cookies[0]); res.Code != http.StatusOK ||
+		json.Unmarshal(res.Body.Bytes(), &detail) != nil || detail.Answer != oldAnswer || detail.Version != 1 {
+		t.Fatalf("作者无法读取汤底和编辑版本：%d %s", res.Code, res.Body.String())
 	}
-	if res := call(http.MethodGet, "/api/soups", nil, cookies[0]); strings.Contains(res.Body.String(), oldAnswer) {
-		t.Fatalf("作者列表泄露汤底：%s", res.Body.String())
+	if res := call(http.MethodGet, "/api/soups", nil, cookies[0]); strings.Contains(res.Body.String(), oldAnswer) || strings.Contains(res.Body.String(), `"version":`) {
+		t.Fatalf("题目列表返回了作者编辑信息：%s", res.Body.String())
 	}
+	input["version"] = detail.Version
 	if res := call(http.MethodPatch, path, input, nil); res.Code != http.StatusUnauthorized {
 		t.Fatalf("匿名用户可以编辑：%d %s", res.Code, res.Body.String())
 	}
@@ -146,10 +149,13 @@ func TestSoupAuthorManageAndGameSnapshots(t *testing.T) {
 		t.Fatalf("不完整编辑被接受：%d %s", res.Code, res.Body.String())
 	}
 	newAnswer := fmt.Sprintf("修改后的汤底-%d", stamp)
-	input = map[string]any{"title": "修改后的题目", "surface": "修改后的完整汤面", "answer": newAnswer, "genre": "变格", "difficulty": 4, "horror": 3}
-	if res := call(http.MethodPatch, path, input, cookies[0]); res.Code != http.StatusOK || !strings.Contains(res.Body.String(), newAnswer) || !strings.Contains(res.Body.String(), `"genre":"变格"`) {
+	input = map[string]any{"title": "修改后的题目", "surface": "修改后的完整汤面", "answer": newAnswer, "genre": "变格", "difficulty": 4, "horror": 3, "version": detail.Version}
+	var updated forum.Soup
+	if res := call(http.MethodPatch, path, input, cookies[0]); res.Code != http.StatusOK ||
+		json.Unmarshal(res.Body.Bytes(), &updated) != nil || updated.Answer != newAnswer || updated.Genre != "变格" || updated.Version != detail.Version+1 {
 		t.Fatalf("作者编辑失败：%d %s", res.Code, res.Body.String())
 	}
+	input["version"] = updated.Version
 	if res := call(http.MethodGet, path, nil, cookies[1]); res.Code != http.StatusOK || strings.Contains(res.Body.String(), newAnswer) || !strings.Contains(res.Body.String(), "修改后的题目") {
 		t.Fatalf("公开详情未正确更新：%d %s", res.Code, res.Body.String())
 	}
@@ -172,7 +178,7 @@ func TestSoupAuthorManageAndGameSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("创建单人对局失败：%v", err)
 	}
-	if res := call(http.MethodPatch, path, input, cookies[0]); res.Code != http.StatusConflict {
+	if res := call(http.MethodPatch, path, input, cookies[0]); res.Code != http.StatusConflict || !strings.Contains(res.Body.String(), forum.ErrActiveGame.Error()) {
 		t.Fatalf("活跃对局期间允许编辑：%d %s", res.Code, res.Body.String())
 	}
 	if res := call(http.MethodDelete, path, nil, cookies[0]); res.Code != http.StatusNoContent {
