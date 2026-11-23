@@ -85,12 +85,23 @@ func LoadEvalCases() ([]EvalCase, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(cases, boundaries...), nil
+	cases = append(cases, boundaries...)
+	if err := validateUniqueEvalContent(cases); err != nil {
+		return nil, err
+	}
+	return cases, nil
 }
 
 // LoadBoundaryCases 返回独立的边界切片和样例 ID 到原始故事分组的映射。
 func LoadBoundaryCases() ([]EvalCase, map[string]string, error) {
-	return loadBoundaryCases(make(map[string]bool), make(map[string]bool))
+	cases, groups, err := loadBoundaryCases(make(map[string]bool), make(map[string]bool))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateUniqueEvalContent(cases); err != nil {
+		return nil, nil, err
+	}
+	return cases, groups, nil
 }
 
 func loadBoundaryCases(ids, groupIDs map[string]bool) ([]EvalCase, map[string]string, error) {

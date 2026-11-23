@@ -62,5 +62,8 @@ func parseHoldoutCases(data []byte, dev []EvalCase) ([]EvalCase, error) {
 			return nil, fmt.Errorf("独立验证故事缺少判定类别: %s", group.ID)
 		}
 	}
+	if err := validateUniqueEvalContent(cases); err != nil {
+		return nil, err
+	}
 	return cases, nil
 }
