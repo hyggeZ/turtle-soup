@@ -1,9 +1,9 @@
 /* 房间票券的四角由插画提供，九宫格切片让框随内容伸缩。 */
 .room-page {
-  --room-paper: url('/assets/ticket-paper.webp');
-  --room-rust: url('/assets/ticket-rust.webp');
-  --room-teal: url('/assets/ticket-teal.webp');
-  --room-claret: url('/assets/ticket-claret.webp');
+  --room-paper: url('../assets/ticket-paper.webp');
+  --room-rust: url('../assets/ticket-rust.webp');
+  --room-teal: url('../assets/ticket-teal.webp');
+  --room-claret: url('../assets/ticket-claret.webp');
   --room-serif: 'Noto Serif SC', 'STSong', 'SimSun', serif;
 }
 
@@ -157,10 +157,10 @@
 .room-page .play-record-avatar { width: 40px; height: 40px; border: 2px solid #e9bc8d; background: #4d3244; box-shadow: 0 0 0 1px #87565a; color: #fff0d7; font: 800 17px/1 var(--room-serif); }
 .room-page .play-record-row:nth-child(3n + 2) .play-record-avatar { background: #315762; }
 .room-page .play-record-row:nth-child(3n + 3) .play-record-avatar { background: #854b51; }
-.room-page [data-portrait="1"] { --room-portrait: url('/assets/room-portrait-1.webp'); }
-.room-page [data-portrait="2"] { --room-portrait: url('/assets/room-portrait-2.webp'); }
-.room-page [data-portrait="3"] { --room-portrait: url('/assets/room-portrait-3.webp'); }
-.room-page [data-portrait="4"] { --room-portrait: url('/assets/room-portrait-4.webp'); }
+.room-page [data-portrait="1"] { --room-portrait: url('../assets/room-portrait-1.webp'); }
+.room-page [data-portrait="2"] { --room-portrait: url('../assets/room-portrait-2.webp'); }
+.room-page [data-portrait="3"] { --room-portrait: url('../assets/room-portrait-3.webp'); }
+.room-page [data-portrait="4"] { --room-portrait: url('../assets/room-portrait-4.webp'); }
 .room-page [data-portrait] { position: relative; }
 /* 头像图案盖在首字上，图片读取失败时仍有成员标识。 */
 .room-page [data-portrait]::after {

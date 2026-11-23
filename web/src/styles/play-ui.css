@@ -15,7 +15,7 @@
   isolation: isolate;
   overflow: hidden;
   color: var(--play-ink);
-  background: #201425 url('/assets/room-city.png') center / cover fixed;
+  background: #201425 url('../assets/room-city.webp') center / cover fixed;
 }
 .play-scene::before {
   content: '';
@@ -314,7 +314,7 @@
 .play-case-content { display: grid; grid-template-columns: 34% minmax(0, 1fr); gap: 20px; }
 .play-case-image { align-self: start; position: relative; margin: 9px 0 0; border: 1px solid #d0b5a0; padding: 7px 7px 21px; background: #fff5e5; box-shadow: 4px 5px 0 #a55f57, 9px 10px 0 #7a4c4b4d; transform: rotate(-4deg); }
 .play-case-image::before { content: ''; position: absolute; top: -7px; left: 38%; width: 20px; height: 7px; border: 2px solid #61423d; border-radius: 5px; transform: rotate(12deg); }
-.play-case-image img { display: block; width: 100%; aspect-ratio: 4/3; object-fit: cover; }
+.play-case-image img { display: block; width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; }
 .play-case-image figcaption { position: absolute; right: 10px; bottom: 2px; color: #99746b; font-size: 9px; }
 .play-case-copy { min-width: 0; }
 .play-case-copy h2 { margin: 0 0 11px; color: #42283a; font-size: 25px; overflow-wrap: anywhere; }

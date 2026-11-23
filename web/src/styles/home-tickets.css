@@ -4,7 +4,7 @@
   min-height: 100svh;
   overflow: hidden;
   background: linear-gradient(90deg, rgba(13,16,31,.55), rgba(15,17,31,.2) 55%, rgba(21,15,29,.05)),
-    url('/assets/home-city.png') center / cover no-repeat, var(--g-night);
+    url('../assets/home-city.webp') center / cover no-repeat, var(--g-night);
   color: var(--g-paper-light);
 }
 
@@ -74,10 +74,10 @@
   border: 12px solid transparent;
   border-image: var(--ticket-skin) var(--ticket-slice, 13%) fill stretch;
 }
-.game-home-link { --ticket-skin: url('/assets/ticket-paper.webp'); }
+.game-home-link { --ticket-skin: url('../assets/ticket-paper.webp'); }
 .game-home-account .game-home-link { transform: rotate(-4deg); }
 .game-home .game-home-write { min-height: 60px; font-size: clamp(19px, 2.2vw, 30px); transform: rotate(-4deg); }
-.game-home .game-home-admin { --ticket-skin: url('/assets/ticket-rust.webp'); color: #ffdfb3; transform: rotate(3deg); }
+.game-home .game-home-admin { --ticket-skin: url('../assets/ticket-rust.webp'); color: #ffdfb3; transform: rotate(3deg); }
 .game-home-link:hover { filter: brightness(1.08) drop-shadow(2px 4px 1px #120b16db); }
 
 .game-route-stack {
@@ -90,8 +90,8 @@
 }
 
 .game-home .game-route {
-  --route-skin: url('/assets/home-ticket-room.webp');
-  --ticket-skin: url('/assets/ticket-claret.webp');
+  --route-skin: url('../assets/home-ticket-room.webp');
+  --ticket-skin: url('../assets/ticket-claret.webp');
   --ticket-tilt: -2.5deg;
   position: relative;
   isolation: isolate;
@@ -123,14 +123,14 @@
 .game-home .game-route:hover::before { translate: 0 -3px; filter: brightness(1.06) drop-shadow(0 10px 4px #190c14b3); }
 .game-home .game-route:active::before { translate: 0 1px; }
 .game-home .game-route--solo {
-  --route-skin: url('/assets/home-ticket-solo.webp');
-  --ticket-skin: url('/assets/ticket-teal.webp');
+  --route-skin: url('../assets/home-ticket-solo.webp');
+  --ticket-skin: url('../assets/ticket-teal.webp');
   --ticket-tilt: -1.4deg;
   grid-template-columns: 61% minmax(0, 1fr);
   margin-left: 12%;
 }
 .game-home .game-route--community {
-  --route-skin: url('/assets/home-ticket-community.webp');
+  --route-skin: url('../assets/home-ticket-community.webp');
   --ticket-tilt: -2.8deg;
   margin-left: -1.1%;
 }

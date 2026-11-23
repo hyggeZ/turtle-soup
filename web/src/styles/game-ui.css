@@ -146,7 +146,7 @@
 .game-profile-feed .game-case-preview { margin-bottom: 9px; }
 
 /* 登录和注册是一张独立纸面，页面背景只是场景而非控件。 */
-.game-auth { min-height: 100vh; background: linear-gradient(90deg, rgba(22,20,34,.93), rgba(22,20,34,.84) 44%, rgba(22,20,34,.1)), url('/assets/room-city.png') center / cover no-repeat, var(--g-night); }
+.game-auth { min-height: 100vh; background: linear-gradient(90deg, rgba(22,20,34,.93), rgba(22,20,34,.84) 44%, rgba(22,20,34,.1)), url('../assets/room-city.webp') center / cover no-repeat, var(--g-night); }
 .game-auth-layout { position: relative; width: min(1200px,100%); min-height: 900px; margin: auto; padding: 44px 30px 80px; }
 .game-auth-layout > .game-back { margin-bottom: 64px; }
 .game-auth-paper { width: min(550px,100%); margin-left: 45px; padding: 38px 47px 43px; transform: rotate(-.35deg); }

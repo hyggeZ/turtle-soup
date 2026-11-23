@@ -2,6 +2,7 @@
 // 单人模式只显示自己的对局；模型判定和汤底权限由 Go 服务决定。
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { request, send } from '../../api'
+import roomImage from '../../assets/room-city.webp'
 import SoloHistory from './SoloHistory.vue'
 import SoupPicker from '../shared/SoupPicker.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
@@ -306,7 +307,10 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++; soupVersion++
             <article v-if="selectedSoup" class="play-paper play-case-card">
               <div class="play-case-head"><span class="play-case-tab">◇ 汤面</span><span class="play-case-ref">CASE FILE</span></div>
               <div class="play-case-content">
-                <figure class="play-case-image"><img src="/assets/room-city.png" alt="雨夜街景插画" /><figcaption>故事场景</figcaption></figure>
+                <figure class="play-case-image">
+                  <img :src="roomImage" alt="雨夜街景插画" width="1672" height="941" loading="lazy" decoding="async" />
+                  <figcaption>故事场景</figcaption>
+                </figure>
                 <div class="play-case-copy"><h2>{{ selectedSoup.title }}</h2><div class="play-soup-tags"><span>{{ selectedSoup.genre }}</span><span>难度 {{ selectedSoup.difficulty }}/5</span><span>恐怖 {{ selectedSoup.horror }}/5</span></div><p class="surface">{{ selectedSoup.surface }}</p></div>
               </div>
               <div class="play-case-foot">推理之前，请先阅读汤面</div>
@@ -323,7 +327,10 @@ onUnmounted(() => { actionVersion++; loadVersion++; listVersion++; soupVersion++
             <article class="play-paper play-case-card">
               <div class="play-case-head"><span class="play-case-tab">◇ 汤面</span><span class="play-case-ref">CASE FILE</span></div>
               <div class="play-case-content">
-                <figure class="play-case-image"><img src="/assets/room-city.png" alt="雨夜街景插画" /><figcaption>故事场景</figcaption></figure>
+                <figure class="play-case-image">
+                  <img :src="roomImage" alt="雨夜街景插画" width="1672" height="941" loading="lazy" decoding="async" />
+                  <figcaption>故事场景</figcaption>
+                </figure>
                 <div class="play-case-copy"><h2>{{ game.title }}</h2><p class="surface">{{ game.surface }}</p></div>
               </div>
               <div class="play-case-foot">推理之前，请先阅读汤面</div>

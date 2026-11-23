@@ -2,6 +2,7 @@
 // 详情页默认展示汤面；作者可直接查看汤底，其他用户需要主动申请。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request, send } from '../../api'
+import evidenceImage from '../../assets/evidence-collage.webp'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 const props = defineProps({ id: Number, user: Object })
 const emit = defineEmits(['back', 'profile', 'edit', 'deleted'])
@@ -237,7 +238,9 @@ onUnmounted(() => { loadVersion++ })
           </section>
           <p v-if="error" class="game-feed-error" role="alert">{{ error }}</p>
         </div>
-        <aside class="game-detail-art" aria-label="证物插画"><img src="/assets/evidence-collage.png" alt="雨夜的照片与放大镜" /></aside>
+        <aside class="game-detail-art" aria-label="证物插画">
+          <img :src="evidenceImage" alt="雨夜的照片与放大镜" width="1536" height="1024" loading="lazy" decoding="async" />
+        </aside>
       </div>
     </div>
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :message="confirmMessage" :confirm-text="confirmText" :cancel-text="confirmType === 'delete' ? '保留题目' : confirmType === 'comment' ? '取消' : '继续推理'" :danger="confirmType === 'delete'" @confirm="confirmed" />

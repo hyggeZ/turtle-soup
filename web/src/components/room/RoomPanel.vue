@@ -2,6 +2,7 @@
 // 房间操作走 HTTP；WebSocket 只提示重新读取按身份过滤的房间快照。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request } from '../../api'
+import evidenceImage from '../../assets/evidence-collage.webp'
 import { needsRefresh, offlinePollDelay, reconnectDelay, snapshotRetryDelay } from './retryTiming'
 import { mergeEvents, validHistoryBefore, validNewPage } from './eventHistory'
 import { roomSnapshotPath, validTaskPage } from './taskView'
@@ -485,7 +486,9 @@ watch(() => ['active', 'paused'].includes(room.value?.status) && room.value?.myR
             <article class="play-paper play-case-card room-skin">
               <div class="play-case-head"><span class="play-case-tab room-skin room-skin-claret">汤面</span></div>
               <div class="play-case-content">
-                <figure class="play-case-image"><img src="/assets/evidence-collage.png" alt="" /></figure>
+                <figure class="play-case-image">
+                  <img :src="evidenceImage" alt="" width="1536" height="1024" loading="lazy" decoding="async" />
+                </figure>
                 <div class="play-case-copy">
                   <h2>{{ room.title }}</h2>
                   <div class="play-soup-tags"><span>{{ room.genre }}</span><span>难度 {{ room.difficulty }}/5</span><span>恐怖 {{ room.horror }}/5</span></div>
