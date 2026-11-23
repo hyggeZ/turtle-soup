@@ -3,9 +3,11 @@
 import { nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import { request, send } from '../../api'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import { usePublishCooldown } from './usePublishCooldown'
 
-const props = defineProps({ editId: { type: Number, default: 0 } })
+const props = defineProps({ editId: { type: Number, default: 0 }, userId: { type: Number, required: true } })
 const emit = defineEmits(['created', 'saved', 'cancel'])
+const { seconds, blocked, remember } = usePublishCooldown('soup', () => props.userId)
 const form = reactive({ title: '', surface: '', answer: '', genre: '本格', difficulty: 3, horror: 0 })
 const titleInput = ref(null)
 const error = ref('')
@@ -64,9 +66,10 @@ async function load() {
 }
 
 async function submit() {
-  if (busy.value || loading.value || !ready.value || conflict.value) return
-  const key = loadKey
   const id = props.editId
+  const userId = props.userId
+  if (busy.value || loading.value || !ready.value || conflict.value || (!id && blocked(userId))) return
+  const key = loadKey
   busy.value = true
   error.value = ''
   try {
@@ -75,6 +78,7 @@ async function submit() {
     const result = await send(path, id ? 'PATCH' : 'POST', body)
     if (key === loadKey) emit(id ? 'saved' : 'created', result.id)
   } catch (cause) {
+    if (!id && remember(userId, cause)) return
     if (key !== loadKey) return
     if (id && cause.status === 409 && cause.code === 'SOUP_VERSION_CONFLICT') {
       conflict.value = true
@@ -154,7 +158,10 @@ onUnmounted(() => { loadKey++ })
             <button type="button" class="game-stamp game-stamp--paper game-stamp--small" @click="confirmReplace = true">用最新版本替换草稿</button>
           </section>
         </div>
-        <div class="game-editor-submit"><button class="game-stamp" :disabled="busy || conflict">{{ busy ? '正在保存…' : editId ? '保存修改' : '发布题目' }} <span aria-hidden="true">↗</span></button></div>
+        <div class="game-editor-submit">
+          <p v-if="!editId && seconds" class="game-detail-hint">请在 {{ seconds }} 秒后重试</p>
+          <button class="game-stamp" :disabled="busy || conflict || (!editId && seconds > 0)">{{ busy ? '正在保存…' : editId ? '保存修改' : '发布题目' }} <span aria-hidden="true">↗</span></button>
+        </div>
       </form>
       <div v-if="error" class="game-feed-error" role="alert"><p>{{ error }}</p><button v-if="editId && !ready && !loading" class="game-stamp game-stamp--paper game-stamp--small" @click="load">重新读取</button></div>
     </div>

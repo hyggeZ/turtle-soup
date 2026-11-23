@@ -215,7 +215,7 @@ onMounted(loadUser)
       <SoupList :refresh="refresh" @back="goBack" @open="openSoup" @profile="openProfile" />
     </section>
     <AuthPanel v-else-if="page === 'auth'" @logged-in="loggedIn" @back="goBack" />
-    <SoupEditor v-else-if="page === 'editor' && user" :edit-id="editingSoup" @created="id => saved(id, '题目已发布')" @saved="id => saved(id, '修改已保存')" @cancel="goBack" />
+    <SoupEditor v-else-if="page === 'editor' && user" :key="user.id" :user-id="user.id" :edit-id="editingSoup" @created="id => saved(id, '题目已发布')" @saved="id => saved(id, '修改已保存')" @cancel="goBack" />
     <section v-else-if="page === 'soup'" class="game-detail-page">
       <p v-if="notice" class="game-notice" role="status">{{ notice }}</p>
       <SoupDetail :id="soupId" :user="user" @back="goBack" @profile="openProfile" @edit="openEditor" @deleted="deleted" />

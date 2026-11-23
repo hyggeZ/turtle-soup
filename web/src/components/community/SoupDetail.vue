@@ -4,8 +4,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { request, send } from '../../api'
 import evidenceImage from '../../assets/evidence-collage.webp'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import { usePublishCooldown } from './usePublishCooldown'
 const props = defineProps({ id: Number, user: Object })
 const emit = defineEmits(['back', 'profile', 'edit', 'deleted'])
+const { seconds, blocked, remember } = usePublishCooldown('comment', () => props.user?.id)
 const soup = ref(null)
 const isAuthor = computed(() => props.user && soup.value?.authorId === props.user.id)
 const comments = ref([])
@@ -77,6 +79,7 @@ async function load() {
   answer.value = ''
   comment.value = ''
   spoiler.value = false
+  posting.value = false
   error.value = ''
   confirmOpen.value = false
   confirmItem.value = null
@@ -149,23 +152,29 @@ async function showComment(item) {
 }
 async function addComment() {
   const body = comment.value.trim()
-  if (!body || posting.value) return
+  const userId = props.user?.id
+  if (!body || !userId || posting.value || blocked(userId)) return
   const id = props.id
   const version = loadVersion
+  const current = () => isCurrent(id, version) && props.user?.id === userId
+  let posted = false
   posting.value = true
+  error.value = ''
   try {
     await send(`/api/soups/${id}/comments`, 'POST', { body, spoiler: spoiler.value })
-    if (!isCurrent(id, version)) return
+    posted = true
+    if (!current()) return
     comment.value = ''
     spoiler.value = false
     await loadComments(id, version)
-    if (!isCurrent(id, version)) return
+    if (!current()) return
     const nextSoup = await request(`/api/soups/${id}`)
-    if (isCurrent(id, version)) soup.value = nextSoup
+    if (current()) soup.value = nextSoup
   } catch (cause) {
-    if (isCurrent(id, version)) error.value = cause.message
+    if (!posted && remember(userId, cause)) return
+    if (current()) error.value = cause.message
   } finally {
-    posting.value = false
+    if (current()) posting.value = false
   }
 }
 // 删除由服务端校验作者身份，并保留已有对局的题目快照。
@@ -220,7 +229,11 @@ onUnmounted(() => { loadVersion++ })
             <p class="game-detail-hint">评论可能包含汤底，需主动确认后查看。</p>
             <form v-if="user" class="game-comment-form" @submit.prevent="addComment">
               <label class="game-field"><span class="game-visually-hidden">发表评论</span><textarea v-model="comment" rows="2" maxlength="500" placeholder="写下你的想法" required></textarea></label>
-              <div class="game-comment-controls"><label class="game-check"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label><button class="game-stamp game-stamp--teal game-stamp--small" :disabled="posting">{{ posting ? '正在发表…' : '发表评论' }}</button></div>
+              <div class="game-comment-controls">
+                <label class="game-check"><input v-model="spoiler" type="checkbox" />这条评论包含剧透</label>
+                <button class="game-stamp game-stamp--teal game-stamp--small" :disabled="posting || seconds > 0">{{ posting ? '正在发表…' : '发表评论' }}</button>
+              </div>
+              <p v-if="seconds" class="game-detail-hint">请在 {{ seconds }} 秒后重试</p>
             </form>
             <p v-if="commentsBusy && !comments.length" class="game-detail-hint" role="status">正在加载评论…</p>
             <p v-else-if="!comments.length && !commentsError" class="game-detail-hint">还没有评论。</p>
