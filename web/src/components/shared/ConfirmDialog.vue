@@ -14,6 +14,7 @@ const props = defineProps({
 const emit = defineEmits(['update:open', 'confirm', 'cancel'])
 const panel = ref(null)
 const titleId = useId()
+const messageId = `${titleId}-message`
 let previousFocus = null
 
 watch(() => props.open, async value => {
@@ -66,11 +67,11 @@ function keydown(event) {
 <template>
   <Teleport to="body">
     <div v-if="open" class="confirm-shade" @click.self="cancel">
-      <section ref="panel" class="confirm-sheet" role="dialog" aria-modal="true" :aria-labelledby="titleId" @keydown="keydown">
+      <section ref="panel" class="confirm-sheet" role="dialog" aria-modal="true" :aria-labelledby="titleId" :aria-describedby="messageId" @keydown="keydown">
         <div class="confirm-symbol" aria-hidden="true">!</div>
         <p class="confirm-label">{{ label }}</p>
         <h2 :id="titleId">{{ title }}</h2>
-        <p class="confirm-message">{{ message }}</p>
+        <p :id="messageId" class="confirm-message">{{ message }}</p>
         <div class="confirm-actions">
           <button v-if="cancelText" type="button" class="confirm-button confirm-button--quiet" data-cancel @click="cancel">{{ cancelText }}</button>
           <button type="button" class="confirm-button" :class="{ 'confirm-button--danger': danger }" @click="confirm">{{ confirmText }}</button>
