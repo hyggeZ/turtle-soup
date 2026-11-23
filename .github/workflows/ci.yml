@@ -62,3 +62,58 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  e2e:
+    name: 浏览器端到端
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: turtle_e2e
+          POSTGRES_PASSWORD: turtle_e2e
+          POSTGRES_DB: turtle_e2e
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U turtle_e2e -d turtle_e2e"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            e2e/package-lock.json
+      - name: 安装 Vue 依赖
+        working-directory: web
+        run: npm ci
+      - name: 安装浏览器测试依赖
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps --only-shell chromium
+      - name: 回归玩家和管理员操作
+        working-directory: e2e
+        env:
+          E2E_DATABASE_URL: postgres://turtle_e2e:turtle_e2e@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/turtle_e2e?sslmode=disable
+        run: npm test
+      - name: 保留失败时的浏览器追踪
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-traces
+          path: e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 5
