@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "holdout_clock_question_yes",
+      "label": "是",
+      "evidence": "历史把“海燕”对应到信封里的备用发条，维修时换入了该零件。",
+      "reason": "代号有明确指向，且对应的零件确实装入钟内。"
+    },
+    {
+      "id": "holdout_clock_question_no",
+      "label": "否",
+      "evidence": "信封内没有书面说明，钟通过更换机械零件恢复。",
+      "reason": "照纸质说明维修的说法与信封内容和维修过程矛盾。"
+    },
+    {
+      "id": "holdout_clock_question_irrelevant",
+      "label": "无关",
+      "evidence": "可用事实只涉及钟表故障、取件和维修。",
+      "reason": "没有师傅早餐饮品的事实，无法证实或否认。"
+    },
+    {
+      "id": "holdout_clock_restore_correct",
+      "label": "正确",
+      "evidence": "钟的机械断件、约定交接的备用件、更换后复走三者衔接。",
+      "reason": "交代了维修原因、取得并更换零件的行动，以及恢复走时的结果。"
+    },
+    {
+      "id": "holdout_clock_restore_partial",
+      "label": "不完整",
+      "evidence": "原发条断裂确实是停钟原因。",
+      "reason": "只还原了故障，缺少信封交接、取件更换和恢复走时之间的联系。"
+    },
+    {
+      "id": "holdout_clock_restore_wrong",
+      "label": "错误",
+      "evidence": "停钟由发条断裂造成，信封用于交接零件。",
+      "reason": "等待供电和按电路图重启的解释与故障原因、信封内容和修复动作冲突。"
+    },
+    {
+      "id": "holdout_archive_question_yes",
+      "label": "是",
+      "evidence": "馆员根据阅览室规则改变书的朝向。",
+      "reason": "摆放方向就是工作人员留下的当日预约标记。"
+    },
+    {
+      "id": "holdout_archive_question_no",
+      "label": "否",
+      "evidence": "题面说明书没有坏，改变朝向与当天预约有关。",
+      "reason": "遮掩破损的动机与书况和工作人员的实际动机都冲突。"
+    },
+    {
+      "id": "holdout_archive_question_irrelevant",
+      "label": "无关",
+      "evidence": "已知的是馆内用书和外借规则。",
+      "reason": "没有作者获奖的证据，不能据此判断是或否。"
+    },
+    {
+      "id": "holdout_archive_restore_correct",
+      "label": "正确",
+      "evidence": "读书会留书，馆员按规则转书，读者识别朝向标记。",
+      "reason": "说明留书动机、馆员的标记动作，以及读者知道当天不能外借的原因。"
+    },
+    {
+      "id": "holdout_archive_restore_partial",
+      "label": "不完整",
+      "evidence": "馆员确实特意改变了这本书的朝向。",
+      "reason": "缺少读书会预约、朝向所代表的外借状态及读者如何识别。"
+    },
+    {
+      "id": "holdout_archive_restore_wrong",
+      "label": "错误",
+      "evidence": "书未破损，当日限制外借来自预约。",
+      "reason": "以书损解释不能外借和转书的动作，替换了真实原因。"
+    },
+    {
+      "id": "holdout_kite_question_yes",
+      "label": "是",
+      "evidence": "试飞时仍有一条短绳连接风筝与地上的工具箱。",
+      "reason": "这条短绳在飞行线之外，剪断前确实提供了地面牵制。"
+    },
+    {
+      "id": "holdout_kite_question_no",
+      "label": "否",
+      "evidence": "被剪断的是系向工具箱的固定绳，飞行线仍连着线轴。",
+      "reason": "题目指的是保留的飞行线，与实际被剪的绳不是同一根。"
+    },
+    {
+      "id": "holdout_kite_question_irrelevant",
+      "label": "无关",
+      "evidence": "故事只交代风筝和两根线的状态，未交代图案。",
+      "reason": "金鱼图案既未得到证实，也没有证据否认。"
+    },
+    {
+      "id": "holdout_kite_restore_correct",
+      "label": "正确",
+      "evidence": "前两轮历史区分了“松针”固定绳和“麦穗”飞行线。",
+      "reason": "说明搬运时固定、试飞忘记解开、剪对绳并保留飞行线，因而解除地面牵制。"
+    },
+    {
+      "id": "holdout_kite_restore_partial",
+      "label": "不完整",
+      "evidence": "风筝同时被飞行线和固定绳牵住。",
+      "reason": "只指出有两根线，缺少固定物、剪断哪一根以及飞起的因果。"
+    },
+    {
+      "id": "holdout_kite_restore_wrong",
+      "label": "错误",
+      "evidence": "放飞后飞行线仍可控制风筝，剪断的线连向地面。",
+      "reason": "把被剪的线和保留的线颠倒，完全无牵引飞走的结果也不符。"
+    },
+    {
+      "id": "holdout_pottery_question_yes",
+      "label": "是",
+      "evidence": "拆盒后老师检查了杯柄内侧，那里有叶脉纹。",
+      "reason": "观察部位和观察对象都符合故事交代的辨认过程。"
+    },
+    {
+      "id": "holdout_pottery_question_no",
+      "label": "否",
+      "evidence": "作者身份是由杯柄里面的印记判断的，与纸盒无关。",
+      "reason": "把纸盒姓名标签当作判断依据，与明确的辨认依据冲突。"
+    },
+    {
+      "id": "holdout_pottery_question_irrelevant",
+      "label": "无关",
+      "evidence": "已知的是制作、拆盒和辨认杯子的细节。",
+      "reason": "没有老师上一节课饮品的资料，无法证实也无法否认。"
+    },
+    {
+      "id": "holdout_pottery_restore_correct",
+      "label": "正确",
+      "evidence": "老师见过小禾留下独有叶脉纹，拆盒后再次看到这个特征。",
+      "reason": "说明老师为何能认出小禾的记号、检查了哪里，以及如何区分外形相同的杯子。"
+    },
+    {
+      "id": "holdout_pottery_restore_partial",
+      "label": "不完整",
+      "evidence": "小禾确实用一片叶子留下了标记。",
+      "reason": "缺少标记的位置和形状、老师看到制作过程，以及如何凭标记辨认。"
+    },
+    {
+      "id": "holdout_pottery_restore_wrong",
+      "label": "错误",
+      "evidence": "老师亲自检查杯柄而辨认作者，纸盒不是线索。",
+      "reason": "不检查杯子、靠盒上姓名认定作者的行动和依据都与故事矛盾。"
+    }
+  ]
+}
