@@ -157,9 +157,15 @@ func newRouter(monitor *telemetry.Store) *gin.Engine {
 	if err := router.SetTrustedProxies(nil); err != nil {
 		panic(err)
 	}
-	router.Use(monitor.Middleware(), account.SameOriginMiddleware(), gin.Recovery())
+	router.Use(monitor.Middleware(), account.SameOriginMiddleware(), gin.CustomRecoveryWithWriter(nil, recoverRequest))
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	return router
+}
+
+// 恢复请求时只记录路由模板和服务生成的追踪标识，避免带入请求或异常原文。
+func recoverRequest(ctx *gin.Context, _ any) {
+	log.Printf("请求处理异常 route=%q trace_id=%s", ctx.FullPath(), ctx.Writer.Header().Get("X-Trace-ID"))
+	ctx.AbortWithStatus(http.StatusInternalServerError)
 }
