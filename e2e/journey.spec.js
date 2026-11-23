@@ -75,11 +75,11 @@ test('注册、发题、多人重连、AI 主持和后台审核', async ({ actor
   })
 
   await test.step('发布题目并验证其他玩家读不到汤底', async () => {
-    await author.getByRole('button', { name: '发布题目' }).click()
+    await author.getByRole('button', { name: '发布题目', exact: true }).click()
     await author.getByLabel('标题').fill(title)
     await author.getByLabel('汤面').fill(surface)
     await author.getByLabel('汤底').fill(answer)
-    await author.getByRole('button', { name: '发布题目' }).click()
+    await author.getByRole('button', { name: '发布题目', exact: true }).click()
     await expect(author.getByRole('heading', { name: title })).toBeVisible()
     await expect(author.getByText('题目已发布', { exact: true })).toBeVisible()
 
