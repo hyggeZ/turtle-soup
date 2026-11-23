@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const maxFileBytes = 10 << 20
@@ -47,8 +48,9 @@ type requestTrace struct {
 
 type contextKey struct{}
 type queryKey struct{}
+type acquireKey struct{}
 
-// Store 同时充当 Gin 中间件和 pgx 查询追踪器。
+// Store 同时充当 Gin 中间件和 pgx 数据库追踪器。
 type Store struct {
 	mu         sync.Mutex
 	dir        string
@@ -200,6 +202,23 @@ func BeginResult(ctx context.Context, name string) func(error) {
 	return func(err error) {
 		addSpan(trace, name, start, err != nil)
 	}
+}
+
+// 取连接阶段包括池内等待与连接检查，单独记录，避免混入 SQL 耗时。
+func (s *Store) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
+	if ctx.Value(contextKey{}) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, acquireKey{}, time.Now())
+}
+
+func (s *Store) TraceAcquireEnd(ctx context.Context, _ *pgxpool.Pool, data pgxpool.TraceAcquireEndData) {
+	trace, _ := ctx.Value(contextKey{}).(*requestTrace)
+	start, ok := ctx.Value(acquireKey{}).(time.Time)
+	if trace == nil || !ok {
+		return
+	}
+	addSpan(trace, "db.acquire", start, data.Err != nil)
 }
 
 // 数据库追踪只记录耗时和错误标记，不记录 SQL、参数或用户资料。

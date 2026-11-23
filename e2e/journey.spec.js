@@ -244,4 +244,43 @@ test('注册、发题与编辑、多人重连、AI 主持和后台审核', async
     await expect(solo.getByText('正在加载题目…', { exact: true })).toHaveCount(0)
     await expect(solo.getByRole('button', { name: title, exact: true })).toHaveCount(0)
   })
+
+  await test.step('后台显示日志占用和数据库取连接耗时', async () => {
+    await admin.goto('/admin')
+    const logs = admin.getByRole('link', { name: /查看运行日志/ })
+    await expect(logs).toBeVisible()
+    // 会话校验和账号列表都会取连接，读取日志前先完成这条业务请求。
+    const users = await admin.request.get('/api/admin/users')
+    expect(users.ok()).toBe(true)
+    const traceId = users.headers()['x-trace-id']
+    expect(traceId).toMatch(/^[a-f0-9]{32}$/)
+    const [logsResponse] = await Promise.all([
+      admin.waitForResponse(res => new URL(res.url()).pathname === '/api/admin/telemetry' && res.ok()),
+      logs.click(),
+    ])
+    const { logBytes, recent } = await logsResponse.json()
+    expect(logBytes).toBeGreaterThan(0)
+    await expect(admin.getByText('日志占用', { exact: true }).locator('..').locator('strong')).toHaveText(/^\d+\.\d+ (KB|MB)$/)
+    const record = recent.find(item => item.traceId === traceId)
+    expect(record).toBeDefined()
+    const acquire = record.spans.filter(span => span.name === 'db.acquire')
+    expect(acquire.length).toBeGreaterThanOrEqual(2)
+    const total = acquire.reduce((sum, span) => sum + span.durationMs, 0)
+    const stages = admin.getByRole('region', { name: '阶段耗时' })
+    await expect(stages).toContainText('GET /api/admin/users')
+    const acquireStage = stages.getByText(`数据库取连接（${acquire.length} 次累计）`, { exact: true })
+    await expect(acquireStage.locator('..')).toContainText(`${total.toFixed(2)} ms`)
+
+    const requests = admin.getByRole('table', { name: '最近请求' })
+    const row = requests.getByRole('row').filter({ has: admin.getByRole('cell', { name: 'GET /api/admin/users', exact: true }) }).first()
+    await row.getByRole('button', { name: '查看链路' }).click()
+    const dialog = admin.getByRole('dialog', { name: '链路详情' })
+    await expect(dialog).toContainText(traceId)
+    const timeline = dialog.getByRole('region', { name: '阶段时间线' })
+    const entries = timeline.getByTitle('db.acquire')
+    await expect(entries).toHaveCount(acquire.length)
+    await expect(entries.first()).toContainText('数据库取连接')
+    await dialog.getByRole('button', { name: '关闭弹窗' }).click()
+    await expect(row.getByRole('button', { name: '查看链路' })).toBeFocused()
+  })
 })

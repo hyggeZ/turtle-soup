@@ -29,11 +29,24 @@ const latestStages = computed(() => {
   const ai = item.spans?.filter(span => span.name.startsWith('ai.')) || []
   const phases = ai.some(span => span.name !== 'ai.decision')
     ? ai.filter(span => span.name !== 'ai.decision') : ai
-  if (phases.length) return phases.map(span => ({ name: stageName(span.name), key: span.name, ms: span.durationMs, failed: span.failed }))
-  return [
-    { name: '会话校验', key: 'auth.session', ms: item.authMs },
-    { name: '数据库查询', key: 'db.query', ms: item.dbMs },
-  ]
+  const stages = phases.length
+    ? phases.map(span => ({ name: stageName(span.name), key: span.name, ms: span.durationMs, failed: span.failed }))
+    : [
+        { name: '会话校验', key: 'auth.session', ms: item.authMs },
+        { name: '数据库查询', key: 'db.query', ms: item.dbMs },
+      ]
+  // 请求可能多次取连接，卡片汇总耗时，弹窗逐次展示。
+  const acquire = item.spans?.filter(span => span.name === 'db.acquire') || []
+  if (acquire.length) {
+    const name = stageName('db.acquire')
+    stages.push({
+      name: acquire.length > 1 ? `${name}（${acquire.length} 次累计）` : name,
+      key: 'db.acquire',
+      ms: acquire.reduce((sum, span) => sum + span.durationMs, 0),
+      failed: acquire.some(span => span.failed),
+    })
+  }
+  return stages
 })
 const aiTrace = computed(() => selected.value?.spans?.some(span => span.name.startsWith('ai.')) || false)
 const traceSpans = computed(() => [...(selected.value?.spans || [])]
@@ -50,6 +63,7 @@ function stageName(key) {
     'ai.persist': '结果保存',
     'ai.release': '占用释放',
     'auth.session': '会话校验',
+    'db.acquire': '数据库取连接',
     'db.query': '数据库查询',
     'db.error': '数据库错误',
   }[key] || key
@@ -133,8 +147,8 @@ onMounted(load)
             <b>P95&nbsp; {{ number(route.p95Ms) }} ms</b>
           </div>
         </section>
-        <section class="paper log-card stages-card">
-          <div class="log-head"><span class="section-number cyan-bg">02</span><div><h2>阶段耗时</h2><small>最近一条请求</small></div></div>
+        <section class="paper log-card stages-card" aria-labelledby="latest-stages-heading">
+          <div class="log-head"><span class="section-number cyan-bg">02</span><div><h2 id="latest-stages-heading">阶段耗时</h2><small>最近一条请求</small></div></div>
           <template v-if="latest">
             <div class="stage-route">{{ latest.method }} {{ latest.route }} <span>{{ latest.status }}</span></div>
             <div v-for="stage in latestStages" :key="stage.key" class="stage-row" :class="{ 'stage-failed': stage.failed }"><span :title="stage.key">{{ stage.name }}{{ stage.failed ? ' · 失败' : '' }}</span><span class="stage-track"><i :style="{ width: `${percent(stage.ms, latest.durationMs)}%` }"></i></span><b>{{ number(stage.ms) }} ms</b></div>
@@ -174,7 +188,7 @@ onMounted(load)
           <div class="trace-route"><strong>{{ selected.method }} {{ selected.route }}</strong><span class="status" :class="{ hidden: selected.status >= 400 }"><i aria-hidden="true"></i>{{ selected.status }}</span></div>
           <p class="trace-id">Trace ID&nbsp; {{ selected.traceId }}</p>
           <div class="trace-total"><span>总耗时</span><strong>{{ number(selected.durationMs) }} <small>ms</small></strong></div>
-          <div v-if="traceSpans.length" class="trace-timeline" aria-label="阶段时间线">
+          <div v-if="traceSpans.length" class="trace-timeline" role="region" aria-label="阶段时间线">
             <div v-for="(span, index) in traceSpans" :key="index" class="trace-span" :class="{ 'trace-span-failed': span.failed }">
               <span class="trace-span-name" :title="span.name">{{ stageName(span.name) }} <em v-if="span.failed">失败</em><small>{{ span.name }}</small></span>
               <span class="trace-span-offset">{{ span.startMs === undefined ? '—' : `+${number(span.startMs)} ms` }}</span>
