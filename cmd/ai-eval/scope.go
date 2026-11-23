@@ -72,3 +72,19 @@ func suiteHash(scope evalScope, cases []agent.EvalCase, groups map[string]string
 	full, err := describeScope(scope.Suite, len(cases), cases, groups)
 	return full.SelectedHash, err
 }
+
+// 离线命令使用当前完整题集验证落盘报告的样例范围。
+func loadCompleteScope(scope evalScope) ([]agent.EvalCase, map[string]string, error) {
+	if !scope.Complete {
+		return nil, nil, errors.New("需要完整题集报告")
+	}
+	cases, groups, err := loadSuite(scope.Suite)
+	if err != nil {
+		return nil, nil, err
+	}
+	full, err := describeScope(scope.Suite, len(cases), cases, groups)
+	if err != nil || full != scope {
+		return nil, nil, errors.New("报告范围与本版本的全量题集不一致")
+	}
+	return cases, groups, nil
+}

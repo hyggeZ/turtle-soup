@@ -105,7 +105,7 @@ func correctReport(t *testing.T, suite string, cases []agent.EvalCase) output {
 	return output{Model: "fake-model", Scope: scope, Report: report}
 }
 
-func saveReport(t *testing.T, dir, name string, report output) string {
+func saveReport(t testing.TB, dir, name string, report output) string {
 	t.Helper()
 	data, err := json.Marshal(report)
 	if err != nil {

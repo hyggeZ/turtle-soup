@@ -32,8 +32,13 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
-	if len(args) > 0 && args[0] == "compare" {
-		return runCompare(args[1:], stdout)
+	if len(args) > 0 {
+		switch args[0] {
+		case "compare":
+			return runCompare(args[1:], stdout)
+		case "stability":
+			return runStability(args[1:], stdout)
+		}
 	}
 	flags := flag.NewFlagSet("ai-eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

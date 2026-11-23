@@ -43,13 +43,9 @@ func runCompare(args []string, stdout io.Writer) error {
 	if !base.Scope.Complete || base.Scope != next.Scope {
 		return errors.New("需要同一题集和指纹的两份全量报告")
 	}
-	cases, groups, err := loadSuite(base.Scope.Suite)
+	cases, groups, err := loadCompleteScope(base.Scope)
 	if err != nil {
 		return err
-	}
-	full, err := describeScope(base.Scope.Suite, len(cases), cases, groups)
-	if err != nil || full != base.Scope {
-		return errors.New("报告范围与本版本的全量题集不一致")
 	}
 	oldScore, err := scoreReport(base.Report, cases)
 	if err != nil {
@@ -88,7 +84,7 @@ func runCompare(args []string, stdout io.Writer) error {
 		Passed                 bool                  `json:"passed"`
 		Issues                 []string              `json:"issues"`
 	}{
-		Scope: full, Baseline: oldScore, Candidate: newScore,
+		Scope: base.Scope, Baseline: oldScore, Candidate: newScore,
 		QuestionF1Delta:        compareF1(oldScore.QuestionF1, newScore.QuestionF1),
 		RestoreF1Delta:         compareF1(oldScore.RestoreF1, newScore.RestoreF1),
 		QuestionConfusionDelta: differenceMatrix(oldScore.QuestionConfusion, newScore.QuestionConfusion),
@@ -117,8 +113,8 @@ func readOutput(path string) (output, error) {
 }
 
 func scoreReport(report agent.EvalReport, cases []agent.EvalCase) (evalScore, error) {
-	if report.Total != len(cases) || len(report.Items) != len(cases) {
-		return evalScore{}, errors.New("逐例结果数量与全量题集不一致")
+	if err := validateReportCount(report, len(cases)); err != nil {
+		return evalScore{}, err
 	}
 	score := evalScore{
 		PromptTokens: report.PromptTokens, CompletionTokens: report.CompletionTokens,
@@ -126,16 +122,12 @@ func scoreReport(report agent.EvalReport, cases []agent.EvalCase) (evalScore, er
 	}
 	var questions, correctRestores, otherRestores int
 	for i, item := range report.Items {
-		sample := cases[i]
-		if item.ID != sample.ID || item.Kind != sample.Kind || item.Expected != sample.Expected {
-			return evalScore{}, fmt.Errorf("第 %d 条报告结果与题集不一致", i+1)
+		if err := validateReportItem(i, item, cases[i]); err != nil {
+			return evalScore{}, err
 		}
-		if item.Error != "" && item.Actual == "" {
+		if item.Error != "" {
 			score.Errors++
 			continue
-		}
-		if item.Error != "" || !validOutcome(item) {
-			return evalScore{}, fmt.Errorf("第 %d 条报告结果格式无效", i+1)
 		}
 		if item.Actual == item.Expected {
 			score.Correct++
@@ -174,6 +166,23 @@ func differenceMatrix(base, next agent.ConfusionMatrix) agent.ConfusionMatrix {
 		}
 	}
 	return delta
+}
+
+func validateReportCount(report agent.EvalReport, total int) error {
+	if report.Total != total || len(report.Items) != total {
+		return errors.New("逐例结果数量与全量题集不一致")
+	}
+	return nil
+}
+
+func validateReportItem(i int, item agent.EvalItem, sample agent.EvalCase) error {
+	if item.ID != sample.ID || item.Kind != sample.Kind || item.Expected != sample.Expected {
+		return fmt.Errorf("第 %d 条报告结果与题集不一致", i+1)
+	}
+	if item.Error == "" && validOutcome(item) || item.Error != "" && item.Actual == "" {
+		return nil
+	}
+	return fmt.Errorf("第 %d 条报告结果格式无效", i+1)
 }
 
 func validOutcome(item agent.EvalItem) bool {
