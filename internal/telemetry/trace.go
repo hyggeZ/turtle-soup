@@ -2,7 +2,6 @@
 package telemetry
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -71,29 +70,6 @@ func NewStore(dir string) (*Store, error) {
 	store := &Store{dir: dir, file: file, records: make([]Record, 0, maxRecords)}
 	store.loadRecent()
 	return store, nil
-}
-
-// 重启后从有限大小的日志文件恢复最近请求，供后台继续查看。
-func (s *Store) loadRecent() {
-	for _, name := range []string{"requests.previous.jsonl", "requests.jsonl"} {
-		file, err := os.Open(filepath.Join(s.dir, name))
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			var record Record
-			if json.Unmarshal(scanner.Bytes(), &record) != nil || record.TraceID == "" {
-				continue
-			}
-			s.records = append(s.records, record)
-			if len(s.records) > maxRecords {
-				s.records = s.records[len(s.records)-maxRecords:]
-			}
-		}
-		file.Close()
-	}
 }
 
 func (s *Store) Close() error {
