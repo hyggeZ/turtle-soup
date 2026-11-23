@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"turtle-soup/internal/room"
 )
 
 // 后台列表只返回汤面和审核状态，任何角色都不能从这里读取汤底。
@@ -183,7 +184,7 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 	}
 	if hidden {
 		// 房间设置先锁房间再锁题目；这里沿用同一顺序避免互相等待。
-		if err := lockWaitingRooms(ctx, tx, id, false); err != nil {
+		if err := room.LockWaitingBySoup(ctx, tx, id, false); err != nil {
 			return nil, 0, err
 		}
 	}
@@ -217,24 +218,10 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 	closed := make([]int64, 0)
 	if hidden {
 		// 首轮锁房后可能刚建出新房；此时持有题目锁，不能等待锁住新房的换题请求。
-		if err := lockWaitingRooms(ctx, tx, id, true); err != nil {
+		if err := room.LockWaitingBySoup(ctx, tx, id, true); err != nil {
 			return nil, 0, err
 		}
-		rows, err := tx.Query(ctx, `UPDATE rooms SET status='closed',closed_at=NOW()
-			WHERE soup_id=$1 AND status='waiting' RETURNING id`, id)
-		if err != nil {
-			return nil, 0, err
-		}
-		for rows.Next() {
-			var roomID int64
-			if err := rows.Scan(&roomID); err != nil {
-				rows.Close()
-				return nil, 0, err
-			}
-			closed = append(closed, roomID)
-		}
-		err = rows.Err()
-		rows.Close()
+		closed, err = room.CloseWaitingBySoup(ctx, tx, id)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -253,25 +240,4 @@ func (h *Handler) moderateSoupOnce(ctx context.Context, operatorRole string, ope
 		return nil, 0, err
 	}
 	return closed, 0, nil
-}
-
-func lockWaitingRooms(ctx context.Context, tx pgx.Tx, soupID int64, nowait bool) error {
-	query := `SELECT id FROM rooms WHERE soup_id=$1 AND status='waiting' ORDER BY id FOR UPDATE`
-	if nowait {
-		query += ` NOWAIT`
-	}
-	rows, err := tx.Query(ctx, query, soupID)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	return err
 }

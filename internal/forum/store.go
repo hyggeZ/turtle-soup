@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"turtle-soup/internal/room"
 )
 
 var ErrNotFound = errors.New("记录不存在")
@@ -284,7 +285,7 @@ func (s *Store) deleteOnce(ctx context.Context, user, id int64) ([]int64, error)
 		return nil, ErrForbidden
 	}
 	// 房间设置与入场先锁房间再锁题目；删除沿用相同顺序。
-	if err := lockWaitingRooms(ctx, tx, id, false); err != nil {
+	if err := room.LockWaitingBySoup(ctx, tx, id, false); err != nil {
 		return nil, err
 	}
 	// 等待房间锁期间题目可能已被其他请求删除，锁题目后再核对一次。
@@ -300,7 +301,7 @@ func (s *Store) deleteOnce(ctx context.Context, user, id int64) ([]int64, error)
 	}
 	// 首轮扫描后可能又建成新房；持有题目锁时不得等待该房的设置事务。
 	// NOWAIT 失败则整笔回滚重试；成功后所有等待房都已锁定。
-	if err := lockWaitingRooms(ctx, tx, id, true); err != nil {
+	if err := room.LockWaitingBySoup(ctx, tx, id, true); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
 			return nil, errRetryDelete
@@ -311,22 +312,7 @@ func (s *Store) deleteOnce(ctx context.Context, user, id int64) ([]int64, error)
 		return nil, err
 	}
 	// 建房和换入题目都要先锁题目，此时不会再出现新的等待房。
-	closed := make([]int64, 0)
-	rows, err := tx.Query(ctx, `UPDATE rooms SET status='closed',closed_at=NOW()
-		WHERE soup_id=$1 AND status='waiting' RETURNING id`, id)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var roomID int64
-		if err := rows.Scan(&roomID); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		closed = append(closed, roomID)
-	}
-	err = rows.Err()
-	rows.Close()
+	closed, err := room.CloseWaitingBySoup(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -334,27 +320,6 @@ func (s *Store) deleteOnce(ctx context.Context, user, id int64) ([]int64, error)
 		return nil, err
 	}
 	return closed, nil
-}
-
-func lockWaitingRooms(ctx context.Context, tx pgx.Tx, soupID int64, nowait bool) error {
-	query := `SELECT id FROM rooms WHERE soup_id=$1 AND status='waiting' ORDER BY id FOR UPDATE`
-	if nowait {
-		query += ` NOWAIT`
-	}
-	rows, err := tx.Query(ctx, query, soupID)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var roomID int64
-		if err := rows.Scan(&roomID); err != nil {
-			rows.Close()
-			return err
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	return err
 }
 
 // RevealAnswer 与加入房间共用题目行锁，避免“看汤底”和“入场”并发穿过检查。
