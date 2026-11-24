@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -18,6 +19,16 @@ import (
 )
 
 func TestQwenTimeoutRecoveryWithPostgres(t *testing.T) {
+	checkQwenTransportRecovery(t, false)
+}
+
+func TestQwenCallerCancellationWithPostgres(t *testing.T) {
+	checkQwenTransportRecovery(t, true)
+}
+
+// 对照模型客户端超时与主动取消，两种失败都应释放操作并允许原 ID 重试。
+func checkQwenTransportRecovery(t *testing.T, cancelByCaller bool) {
+	t.Helper()
 	ctx, db := newHistoryTestDB(t)
 	var author, player, soupID int64
 	if err := db.QueryRow(ctx, `INSERT INTO users(username,password_hash) VALUES('fault_author','test') RETURNING id`).Scan(&author); err != nil {
@@ -45,6 +56,8 @@ func TestQwenTimeoutRecoveryWithPostgres(t *testing.T) {
 	// 第一次回环 HTTP 调用等待取消，下一次立即返回受约束的正常判定。
 	var upstreamCalls atomic.Int32
 	stop := make(chan struct{})
+	started := make(chan struct{})
+	upstreamCanceled := make(chan time.Time, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {
 			t.Error("Qwen 请求路径错误")
@@ -55,8 +68,10 @@ func TestQwenTimeoutRecoveryWithPostgres(t *testing.T) {
 			return
 		}
 		if upstreamCalls.Add(1) == 1 {
+			close(started)
 			select {
 			case <-r.Context().Done():
+				upstreamCanceled <- time.Now()
 			case <-stop:
 			}
 			return
@@ -68,21 +83,25 @@ func TestQwenTimeoutRecoveryWithPostgres(t *testing.T) {
 	defer close(stop)
 	client := upstream.Client()
 	client.Timeout = 250 * time.Millisecond
+	if cancelByCaller {
+		client.Timeout = 8 * time.Second
+	}
 	model := &Qwen{Key: "fake-test-key", BaseURL: upstream.URL, Model: "mock", Client: client}
 	router := gin.New()
 	NewHandler(store, account.NewHandler(account.NewPGStore(db), false), model).Register(router)
 	path := fmt.Sprintf("/api/ai/solo/%d/actions", game)
-	call := func() (*httptest.ResponseRecorder, time.Duration) {
-		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"type":"question","body":"他回家了吗？","operationId":"fault_timeout_01"}`))
+	type result struct {
+		response *httptest.ResponseRecorder
+		elapsed  time.Duration
+	}
+	call := func(requestCtx context.Context) result {
+		request := httptest.NewRequestWithContext(requestCtx, http.MethodPost, path, strings.NewReader(`{"type":"question","body":"他回家了吗？","operationId":"fault_timeout_01"}`))
 		request.Header.Set("Content-Type", "application/json")
 		request.AddCookie(&http.Cookie{Name: "turtle_session", Value: token})
 		response := httptest.NewRecorder()
 		start := time.Now()
 		router.ServeHTTP(response, request)
-		if strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "fake-test-key") {
-			t.Fatal("故障或恢复响应泄漏了隐藏内容")
-		}
-		return response, time.Since(start)
+		return result{response, time.Since(start)}
 	}
 
 	check := func(wantEvents, wantAttempts, wantCalls int) {
@@ -100,24 +119,55 @@ func TestQwenTimeoutRecoveryWithPostgres(t *testing.T) {
 		}
 	}
 
-	failed, failureTime := call()
-	if failed.Code != http.StatusServiceUnavailable || upstreamCalls.Load() != 1 {
-		t.Fatalf("应经历一次真实客户端超时并返回 503：status=%d calls=%d", failed.Code, upstreamCalls.Load())
+	var failed result
+	if cancelByCaller {
+		actionCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		done := make(chan result, 1)
+		go func() { done <- call(actionCtx) }()
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("未看到首个模型请求进入上游")
+		}
+		canceledAt := time.Now()
+		cancel()
+		select {
+		case upstreamAt := <-upstreamCanceled:
+			t.Logf("调用方取消传到模型：%s", upstreamAt.Sub(canceledAt))
+		case <-time.After(2 * time.Second):
+			t.Fatal("调用方取消未及时传到正在等待的模型")
+		}
+		select {
+		case failed = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("取消后请求未及时完成")
+		}
+	} else {
+		failed = call(ctx)
+	}
+	if failed.response.Code != http.StatusServiceUnavailable || upstreamCalls.Load() != 1 {
+		t.Fatalf("模型传输失败应返回 503：status=%d calls=%d", failed.response.Code, upstreamCalls.Load())
 	}
 	check(0, 1, 1)
 	var failedAttempts int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM ai_attempts WHERE game_id=$1 AND NOT success`, game).Scan(&failedAttempts); err != nil || failedAttempts != 1 {
 		t.Fatalf("缺失上游失败记录：count=%d err=%v", failedAttempts, err)
 	}
-	recovered, recoveryTime := call()
-	if recovered.Code != http.StatusOK || !strings.Contains(recovered.Body.String(), `"result":"是"`) {
-		t.Fatalf("同操作 ID 未恢复：status=%d", recovered.Code)
+	recovered := call(ctx)
+	if recovered.response.Code != http.StatusOK || !strings.Contains(recovered.response.Body.String(), `"result":"是"`) {
+		t.Fatalf("同操作 ID 未恢复：status=%d", recovered.response.Code)
 	}
 	check(1, 2, 2)
-	replayed, replayTime := call()
-	if replayed.Code != http.StatusOK || !strings.Contains(replayed.Body.String(), `"duplicate":true`) || upstreamCalls.Load() != 2 {
-		t.Fatalf("已完成操作未正确重放：status=%d calls=%d", replayed.Code, upstreamCalls.Load())
+	replayed := call(ctx)
+	if replayed.response.Code != http.StatusOK || !strings.Contains(replayed.response.Body.String(), `"duplicate":true`) || upstreamCalls.Load() != 2 {
+		t.Fatalf("已完成操作未正确重放：status=%d calls=%d", replayed.response.Code, upstreamCalls.Load())
 	}
 	check(1, 2, 2)
-	t.Logf("model_fault_ms=%d model_recovery_ms=%d model_replay_ms=%d upstream_calls=%d", failureTime.Milliseconds(), recoveryTime.Milliseconds(), replayTime.Milliseconds(), upstreamCalls.Load())
+	for _, reply := range []result{failed, recovered, replayed} {
+		if strings.Contains(reply.response.Body.String(), secret) || strings.Contains(reply.response.Body.String(), "fake-test-key") {
+			t.Fatal("故障或恢复响应泄漏了隐藏内容")
+		}
+	}
+	t.Logf("model_fault_ms=%d model_recovery_ms=%d model_replay_ms=%d upstream_calls=%d", failed.elapsed.Milliseconds(), recovered.elapsed.Milliseconds(), replayed.elapsed.Milliseconds(), upstreamCalls.Load())
 }
