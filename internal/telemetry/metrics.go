@@ -10,14 +10,25 @@ import (
 
 // Metrics 聚合 API 请求、追踪 SQL 数及关键操作耗时，标签固定。
 type Metrics struct {
-	handler      http.Handler
-	apiRequests  [4]prometheus.Counter
-	dbQueries    prometheus.Counter
-	joinOK       prometheus.Observer
-	joinRejected prometheus.Observer
-	joinError    prometheus.Observer
-	decisionOK   prometheus.Observer
-	decisionErr  prometheus.Observer
+	handler     http.Handler
+	apiRequests [4]prometheus.Counter
+	dbQueries   prometheus.Counter
+	login       requestDuration
+	join        requestDuration
+	decisionOK  prometheus.Observer
+	decisionErr prometheus.Observer
+}
+
+type requestDuration struct {
+	ok, rejected, failed prometheus.Observer
+}
+
+func bindRequestDuration(duration *prometheus.HistogramVec, name string) requestDuration {
+	return requestDuration{
+		ok:       duration.WithLabelValues(name, "ok"),
+		rejected: duration.WithLabelValues(name, "rejected"),
+		failed:   duration.WithLabelValues(name, "error"),
+	}
 }
 
 // NewMetrics 使用私有注册表，只开放此模块声明的指标。
@@ -25,7 +36,7 @@ func NewMetrics() *Metrics {
 	reg := prometheus.NewRegistry()
 	duration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "turtle_operation_duration_seconds",
-		Help:    "Duration and count of room joins and AI decisions.",
+		Help:    "Duration and count of player logins, room joins and AI decisions.",
 		Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30},
 	}, []string{"operation", "outcome"})
 	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -45,12 +56,11 @@ func NewMetrics() *Metrics {
 			requests.WithLabelValues("2xx"), requests.WithLabelValues("3xx"),
 			requests.WithLabelValues("4xx"), requests.WithLabelValues("5xx"),
 		},
-		dbQueries:    queries,
-		joinOK:       duration.WithLabelValues("room_join", "ok"),
-		joinRejected: duration.WithLabelValues("room_join", "rejected"),
-		joinError:    duration.WithLabelValues("room_join", "error"),
-		decisionOK:   duration.WithLabelValues("ai_decision", "ok"),
-		decisionErr:  duration.WithLabelValues("ai_decision", "error"),
+		dbQueries:   queries,
+		login:       bindRequestDuration(duration, "login"),
+		join:        bindRequestDuration(duration, "room_join"),
+		decisionOK:  duration.WithLabelValues("ai_decision", "ok"),
+		decisionErr: duration.WithLabelValues("ai_decision", "error"),
 	}
 }
 
@@ -74,13 +84,18 @@ func (m *Metrics) ObserveRoomJoin(status int, elapsed time.Duration) {
 	if m == nil {
 		return
 	}
+	m.join.observe(status, elapsed)
+}
+
+// 区分业务拒绝和服务错误，登录或入房的 4xx 不算服务故障。
+func (d requestDuration) observe(status int, elapsed time.Duration) {
 	switch {
 	case status >= 200 && status < 300:
-		m.joinOK.Observe(seconds(elapsed))
+		d.ok.Observe(seconds(elapsed))
 	case status >= 400 && status < 500:
-		m.joinRejected.Observe(seconds(elapsed))
+		d.rejected.Observe(seconds(elapsed))
 	default:
-		m.joinError.Observe(seconds(elapsed))
+		d.failed.Observe(seconds(elapsed))
 	}
 }
 

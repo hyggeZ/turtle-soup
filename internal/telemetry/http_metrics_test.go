@@ -119,6 +119,49 @@ func httpCounterLines(body string) []string {
 	return lines
 }
 
+// 登录指标只观察玩家登录路由，并保留拒绝与服务错误的区别。
+func TestPlayerLoginIndicators(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	metrics := NewMetrics()
+	store.SetMetrics(metrics)
+	router := gin.New()
+	router.Use(store.Middleware())
+	router.POST("/api/login", func(c *gin.Context) {
+		switch c.Query("fixture") {
+		case "denied":
+			c.Status(http.StatusUnauthorized)
+		case "limited":
+			c.Status(http.StatusTooManyRequests)
+		case "failed":
+			c.Status(http.StatusServiceUnavailable)
+		default:
+			c.Status(http.StatusOK)
+		}
+	})
+	router.POST("/api/admin/login", func(c *gin.Context) { c.Status(http.StatusOK) })
+	for _, path := range []string{
+		"/api/login?fixture=private-player", "/api/login?fixture=denied", "/api/login?fixture=limited",
+		"/api/login?fixture=failed", "/api/admin/login",
+	} {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, path, nil))
+	}
+	res := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := res.Body.String()
+	checkMetricLines(t, body,
+		`turtle_operation_duration_seconds_count{operation="login",outcome="ok"} 1`,
+		`turtle_operation_duration_seconds_count{operation="login",outcome="rejected"} 2`,
+		`turtle_operation_duration_seconds_count{operation="login",outcome="error"} 1`,
+	)
+	if strings.Contains(body, "private-player") || strings.Contains(body, "/api/login") {
+		t.Fatal("抓取结果包含登录请求信息")
+	}
+}
+
 // 复用真实观测入口，只计已有请求链路复用字段后的进程内成本。
 func BenchmarkHTTPMetricsObserve(b *testing.B) {
 	for _, sample := range []struct {
@@ -126,6 +169,7 @@ func BenchmarkHTTPMetricsObserve(b *testing.B) {
 		record Record
 	}{
 		{"get_soups", Record{Method: http.MethodGet, Route: "/api/soups", Status: http.StatusOK, DBCount: 1}},
+		{"post_login", Record{Method: http.MethodPost, Route: "/api/login", Status: http.StatusOK, DBCount: 2}},
 		{"post_room_join", Record{Method: http.MethodPost, Route: "/api/rooms/join", Status: http.StatusOK, DBCount: 4}},
 	} {
 		b.Run(sample.name, func(b *testing.B) {

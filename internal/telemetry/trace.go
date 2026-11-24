@@ -125,6 +125,8 @@ func (s *Store) observeRequest(record Record, elapsed time.Duration) {
 		return
 	}
 	switch record.Route {
+	case "/api/login":
+		s.metrics.login.observe(record.Status, elapsed)
 	case "/api/rooms/join":
 		s.metrics.ObserveRoomJoin(record.Status, elapsed)
 	case "/api/ai/solo/:id/actions":
