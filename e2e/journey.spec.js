@@ -4,16 +4,35 @@ import { modelQuestion } from './qwen.js'
 
 const playerPassword = 'only-local-e2e-2026'
 
+async function observeSitePolicy(context, baseURL, stats) {
+  const origin = new URL(baseURL).origin
+  await context.exposeBinding('recordCSPViolation', (_, directive) => { stats.violations.push(directive) })
+  await context.addInitScript(() => {
+    addEventListener('securitypolicyviolation', event => { void window.recordCSPViolation(event.effectiveDirective) })
+  })
+  context.on('response', response => {
+    if (response.request().resourceType() !== 'document' || new URL(response.url()).origin !== origin) return
+    stats.documents++
+    if (response.headers()['content-security-policy']) stats.protected++
+  })
+}
+
 // 每个角色使用独立的 Cookie 和会话存储，避免身份和房间恢复状态串用。
 const test = base.extend({
   actors: async ({ page, browser, baseURL, viewport }, use) => {
     const pages = []
+    const policyStats = { documents: 0, protected: 0, violations: [] }
     try {
       for (let i = 0; i < 3; i++) {
         pages.push(await browser.newPage({ baseURL, viewport }))
       }
+      await Promise.all([page, ...pages].map(actor => observeSitePolicy(actor.context(), baseURL, policyStats)))
       const [player, solo, admin] = pages
       await use({ author: page, player, solo, admin })
+      expect(policyStats.documents, '实际收到部署策略的页面数').toBeGreaterThanOrEqual(4)
+      expect(policyStats.protected, '每份同源 HTML 导航响应都应带 CSP').toBe(policyStats.documents)
+      expect(policyStats.violations, '正常页面和对局不应触发 CSP').toEqual([])
+      console.log(`HTML 策略响应 ${policyStats.protected}/${policyStats.documents}，策略违规 ${policyStats.violations.length}`)
     } finally {
       await Promise.all(pages.map(page => page.close()))
     }

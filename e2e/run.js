@@ -126,7 +126,8 @@ async function main() {
   const api = start('Go API', join(scratch, `server${exe}`), [], { env })
   await ready(api, `http://${host}:${apiPort}/health`)
   const preview = start('Vite 预览', process.execPath,
-    [vite, 'preview', '--host', host, '--port', String(webPort), '--strictPort', '--outDir', dist], { cwd: web })
+    [vite, 'preview', '--config', join(here, 'vite.preview.js'), '--host', host, '--port', String(webPort), '--strictPort', '--outDir', dist],
+    { cwd: web })
   await ready(preview, `http://${host}:${webPort}/`)
 
   const testEnv = { ...process.env, E2E_ADMIN_PASSWORD: adminPassword, ROOM_OFFLINE_WEB_DIST: dist }
