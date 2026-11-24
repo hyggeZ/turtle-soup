@@ -116,7 +116,7 @@ switch_release "$release_dir"
 if sudo systemctl restart turtle-soup; then
   for attempt in {1..20}; do
     if sudo systemctl is-active --quiet turtle-soup && \
-       curl --fail --silent --max-time 3 http://127.0.0.1:18080/health >/dev/null && \
+       curl --fail --silent --max-time 3 http://127.0.0.1:18080/ready >/dev/null && \
        curl --fail --silent --max-time 3 http://127.0.0.1:18084/ >/dev/null; then
       ready=true
       break

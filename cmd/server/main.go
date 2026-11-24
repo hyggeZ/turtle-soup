@@ -76,6 +76,7 @@ func main() {
 		monitor.SetMetrics(metrics)
 	}
 	router := newRouter(monitor)
+	registerReadiness(router, db.Ping)
 	// 默认只信任 TCP 对端地址；部署在反向代理后时显式列出代理 IP 或 CIDR。
 	if raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); raw != "" {
 		proxies := strings.Split(raw, ",")
