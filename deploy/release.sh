@@ -113,11 +113,23 @@ fi
 stage=
 switch_release "$release_dir"
 
+# 通过同一代理检查匿名 API，仅保留状态和内容类型。后台预期返回 401。
+proxy_json() {
+  local response content
+  local json_type='^application/json([[:space:]]*;.*)?[[:space:]]*$'
+  response=$(curl --disable --silent --show-error --max-time 3 --noproxy '*' \
+    --output /dev/null --write-out '%{http_code} %{content_type}' "http://127.0.0.1:18084$1") || return 1
+  content=${response#* }
+  [[ "${response%% *}" == "$2" && "${content,,}" =~ $json_type ]]
+}
+
 if sudo systemctl restart turtle-soup; then
   for attempt in {1..20}; do
     if sudo systemctl is-active --quiet turtle-soup && \
        curl --fail --silent --max-time 3 http://127.0.0.1:18080/ready >/dev/null && \
-       curl --fail --silent --max-time 3 http://127.0.0.1:18084/ >/dev/null; then
+       curl --fail --silent --max-time 3 http://127.0.0.1:18084/ >/dev/null && \
+       proxy_json /api/soups 200 && \
+       proxy_json /api/admin/users 401; then
       ready=true
       break
     fi
